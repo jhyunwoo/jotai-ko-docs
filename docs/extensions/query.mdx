@@ -1,0 +1,446 @@
+---
+title: Query
+description: 이 문서에서는 TanStack 쿼리 확장에 대해 설명합니다.
+nav: 4.02
+keywords: tanstack,query
+---
+
+[TanStack Query](https://tanstack.com/query/)는 비동기 상태(일반적으로 외부 데이터)를 관리하기 위한 기능 세트를 제공합니다.
+
+[개요 문서](https://tanstack.com/query/v5/docs/framework/react/overview)에서:
+
+> React Query는 종종 React에 대한 데이터 가져오기 라이브러리가 누락된 것으로 설명되지만 좀 더 기술적인 용어로 말하면 React 애플리케이션에서 **서버 상태 가져오기, 캐싱, 동기화 및 업데이트**를 쉽게 만듭니다.
+
+[jotai-tanstack-query](https://github.com/jotai-labs/jotai-tanstack-query)는 TanStack Query용 Jotai 확장 라이브러리입니다. TanStack Query의 기능을 기존 Jotai 상태와 함께 사용할 수 있도록 편리한 인터페이스를 제공합니다.
+
+### 지원
+
+jotai-tanstack-query는 현재 TanStack Query v5를 지원합니다.
+
+### 설치
+
+확장 프로그램을 사용하려면 `jotai` 외에도 `jotai-tanstack-query` 및 `@tanstack/query-core`를 설치해야 합니다.
+
+```bash
+npm install jotai-tanstack-query @tanstack/query-core
+```
+
+### 점진적 채택
+
+앱에서 `jotai-tanstack-query`를 점진적으로 도입할 수 있습니다. 이것은 전부 아니면 전무(all or nothing) 방식의 해법이 아닙니다. 같은 `QueryClient` 인스턴스를 사용하고 있기만 하면 됩니다. [프로젝트에서 동일한 QueryClient 인스턴스 참조](#referencing-the-same-queryclient-instance-in-your-project)를 참고하세요.
+
+```jsx
+// 기존 useQuery 훅
+const { data, isPending, isError } = useQuery({
+  queryKey: ['todos'],
+  queryFn: fetchTodoList,
+})
+
+// jotai-tanstack-query
+const todosAtom = atomWithQuery(() => ({
+  queryKey: ['todos'],
+}))
+
+const [{ data, isPending, isError }] = useAtom(todosAtom)
+```
+
+### 내보낸 함수
+
+- [useQuery](https://tanstack.com/query/v5/docs/react/reference/useQuery)의 경우 `atomWithQuery`
+- [useInfiniteQuery](https://tanstack.com/query/v5/docs/react/reference/useInfiniteQuery)의 경우 `atomWithInfiniteQuery`
+- [useMutation](https://tanstack.com/query/v5/docs/react/reference/useMutation)의 경우 `atomWithMutation`
+- [useSuspenseQuery](https://tanstack.com/query/v5/docs/react/reference/useSuspenseQuery)의 경우 `atomWithSuspenseQuery`
+- [useSuspenseInfiniteQuery](https://tanstack.com/query/v5/docs/react/reference/useSuspenseInfiniteQuery)의 경우 `atomWithSuspenseInfiniteQuery`
+- [useMutationState](https://tanstack.com/query/v5/docs/react/reference/useMutationState)의 경우 `atomWithMutationState`
+
+모든 함수는 동일한 서명을 따릅니다.
+
+```ts
+const dataAtom = atomWithSomething(getOptions, getQueryClient)
+```
+
+첫 번째 `getOptions` 매개변수는 관찰자에게 입력을 반환하는 함수입니다.
+두 번째 선택적 `getQueryClient` 매개변수는 [QueryClient](https://tanstack.com/query/v5/docs/reference/QueryClient)를 반환하는 함수입니다.
+
+### atomWithQuery 사용법
+
+`atomWithQuery`는 TanStack 쿼리에서 표준 [`Query`](https://tanstack.com/query/v5/docs/react/guides/queries)을 구현하는 새로운 원자를 생성합니다.
+
+```jsx
+import { atom, useAtom } from 'jotai'
+import { atomWithQuery } from 'jotai-tanstack-query'
+
+const idAtom = atom(1)
+const userAtom = atomWithQuery((get) => ({
+  queryKey: ['users', get(idAtom)],
+  queryFn: async ({ queryKey: [, id] }) => {
+    const res = await fetch(`https://jsonplaceholder.typicode.com/users/${id}`)
+    return res.json()
+  },
+}))
+
+const UserData = () => {
+  const [{ data, isPending, isError }] = useAtom(userAtom)
+
+  if (isPending) return <div>Loading...</div>
+  if (isError) return <div>Error</div>
+
+  return <div>{JSON.stringify(data)}</div>
+}
+```
+
+### atomWithInfiniteQuery 사용법
+
+`atomWithInfiniteQuery`는 `atomWithQuery`와 매우 비슷하지만, 페이지네이션이 필요한 데이터에 사용하는 `InfiniteQuery`를 위한 API입니다. [무한 쿼리에 대한 자세한 내용은 여기에서 확인할 수 있습니다.](https://tanstack.com/query/v5/docs/framework/react/guides/infinite-queries)
+
+> 기존 데이터 집합에 추가로 "더 많은 데이터를 로드"하거나 "무한 스크롤"할 수 있는 렌더링 목록도 매우 일반적인 UI 패턴입니다. React Query는 이러한 유형의 목록을 쿼리하기 위해 useInfiniteQuery라는 유용한 버전의 useQuery를 지원합니다.
+
+표준 쿼리 Atom 간의 눈에 띄는 차이점은 추가 옵션 `getNextPageParam` 및 `getPreviousPageParam`입니다. 이 옵션은 추가 페이지를 가져오는 방법을 쿼리에 지시하는 데 사용됩니다.
+
+```jsx
+import { atom, useAtom } from 'jotai'
+import { atomWithInfiniteQuery } from 'jotai-tanstack-query'
+
+const postsAtom = atomWithInfiniteQuery(() => ({
+  queryKey: ['posts'],
+  queryFn: async ({ pageParam }) => {
+    const res = await fetch(`https://jsonplaceholder.typicode.com/posts?_page=${pageParam}`)
+    return res.json()
+  },
+  getNextPageParam: (lastPage, allPages, lastPageParam) => lastPageParam + 1,
+  initialPageParam: 1,
+}))
+
+const Posts = () => {
+  const [{ data, fetchNextPage, isPending, isError, isFetching }] =
+    useAtom(postsAtom)
+
+  if (isPending) return <div>Loading...</div>
+  if (isError) return <div>Error</div>
+
+  return (
+    <>
+      {data.pages.map((page, index) => (
+        <div key={index}>
+          {page.map((post: any) => (
+            <div key={post.id}>{post.title}</div>
+          ))}
+        </div>
+      ))}
+      <button onClick={() => fetchNextPage()}>Next</button>
+    </>
+  )
+}
+```
+
+### atomWithMutation 사용법
+
+`atomWithMutation`는 TanStack 쿼리에서 표준 [`Mutation`](https://tanstack.com/query/v5/docs/framework/react/guides/mutations)을 구현하는 새로운 원자를 생성합니다.
+
+> 쿼리와 달리 mutation은 일반적으로 데이터를 생성/업데이트/삭제하거나 서버 쪽 부작용을 수행하는 데 사용됩니다.
+
+```tsx
+const postAtom = atomWithMutation(() => ({
+  mutationKey: ['posts'],
+  mutationFn: async ({ title }: { title: string }) => {
+    const res = await fetch(`https://jsonplaceholder.typicode.com/posts`, {
+      method: 'POST',
+      body: JSON.stringify({
+        title,
+        body: 'body',
+        userId: 1,
+      }),
+      headers: {
+        'Content-type': 'application/json; charset=UTF-8',
+      },
+    })
+    const data = await res.json()
+    return data
+  },
+}))
+
+const Posts = () => {
+  const [{ mutate, status }] = useAtom(postAtom)
+  return (
+    <div>
+      <button onClick={() => mutate({ title: 'foo' })}>Click me</button>
+      <pre>{JSON.stringify(status, null, 2)}</pre>
+    </div>
+  )
+}
+```
+
+### atomWithMutationState 사용법
+
+`atomWithMutationState`는 [`MutationCache`](https://tanstack.com/query/v5/docs/react/reference/useMutationState)의 모든 mutation에 접근할 수 있는 새로운 atom을 생성합니다.
+
+```jsx
+const mutationStateAtom = atomWithMutationState((get) => ({
+  filters: {
+    mutationKey: ['posts'],
+  },
+}))
+```
+
+### Suspense
+
+jotai-tanstack-query는 React의 Suspense와 함께 사용할 수도 있습니다.
+
+### atomWithSuspenseQuery 사용법
+
+```jsx
+import { atom, useAtom } from 'jotai'
+import { atomWithSuspenseQuery } from 'jotai-tanstack-query'
+
+const idAtom = atom(1)
+const userAtom = atomWithSuspenseQuery((get) => ({
+  queryKey: ['users', get(idAtom)],
+  queryFn: async ({ queryKey: [, id] }) => {
+    const res = await fetch(`https://jsonplaceholder.typicode.com/users/${id}`)
+    return res.json()
+  },
+}))
+
+const UserData = () => {
+  const [{ data }] = useAtom(userAtom)
+
+  return <div>{JSON.stringify(data)}</div>
+}
+```
+
+### atomWithSuspenseInfiniteQuery 사용법
+
+```jsx
+import { atom, useAtom } from 'jotai'
+import { atomWithSuspenseInfiniteQuery } from 'jotai-tanstack-query'
+
+const postsAtom = atomWithSuspenseInfiniteQuery(() => ({
+  queryKey: ['posts'],
+  queryFn: async ({ pageParam }) => {
+    const res = await fetch(`https://jsonplaceholder.typicode.com/posts?_page=${pageParam}`)
+    return res.json()
+  },
+  getNextPageParam: (lastPage, allPages, lastPageParam) => lastPageParam + 1,
+  initialPageParam: 1,
+}))
+
+const Posts = () => {
+  const [{ data, fetchNextPage, isPending, isError, isFetching }] =
+    useAtom(postsAtom)
+
+  return (
+    <>
+      {data.pages.map((page, index) => (
+        <div key={index}>
+          {page.map((post: any) => (
+            <div key={post.id}>{post.title}</div>
+          ))}
+        </div>
+      ))}
+      <button onClick={() => fetchNextPage()}>Next</button>
+    </>
+  )
+}
+```
+
+### Referencing the same QueryClient instance in your project
+
+아마도 프로젝트에 `useQueryClient()` 후크를 활용하여 `QueryClient` 개체를 얻고 해당 메서드를 호출하는 사용자 정의 후크가 있을 수 있습니다.
+
+동일한 `QueryClient` 개체를 참조하려면 프로젝트의 루트를 `<Provider>`로 래핑하고 `QueryClientProvider`에 제공한 것과 동일한 `queryClient` 값으로 `queryClientAtom`를 초기화해야 합니다.
+
+이 단계가 없으면 `useQueryAtom`는 queryClient를 가져오기 위해 `useQueryClient()` 후크를 활용하는 후크에서 별도의 `QueryClient`를 참조합니다.
+
+또는 `getQueryClient` 매개변수를 사용하여 `queryClient`를 지정할 수 있습니다.
+
+#### 예
+
+아래 예에는 돌연변이 후크 `useTodoMutation`와 쿼리 `todosAtom`가 있습니다.
+
+루트 `<App>` 노드에 초기화 단계를 포함시켰습니다.
+
+메소드가 동일한 쿼리 키(`'todos'`)를 참조하더라도 `useTodoMutation`의 `onSuccess` 무효화는 **`Provider` 초기화 단계가 완료되지 않은 경우 트리거되지 않습니다.**
+
+이로 인해 다시 가져오라는 메시지가 표시되지 않아 `todosAtom`에 오래된 데이터가 표시됩니다.
+
+⚠️ 참고: **Typescript**를 사용하는 경우 queryClient 값을 useHydrateAtoms에 전달할 때 Map을 사용하는 것이 좋습니다. [렌더링 문서의 상태 초기화](https://jotai.org/docs/guides/initialize-atom-on-render#using-typescript)에서 실제 예제를 찾을 수 있습니다.
+
+```jsx
+import { Provider } from 'jotai/react'
+import { useHydrateAtoms } from 'jotai/react/utils'
+import {
+  useMutation,
+  useQueryClient,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query'
+import { atomWithQuery, queryClientAtom } from 'jotai-tanstack-query'
+
+const queryClient = new QueryClient()
+
+const HydrateAtoms = ({ children }) => {
+  useHydrateAtoms([[queryClientAtom, queryClient]])
+  return children
+}
+
+export const App = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Provider>
+        {/*
+   This Provider initialisation step is needed so that we reference the same
+   queryClient in both atomWithQuery and other parts of the app. Without this,
+   our useQueryClient() hook will return a different QueryClient object
+	*/}
+        <HydrateAtoms>
+          <App />
+        </HydrateAtoms>
+      </Provider>
+    </QueryClientProvider>
+  )
+}
+
+export const todosAtom = atomWithQuery((get) => {
+  return {
+    queryKey: ['todos'],
+    queryFn: () => fetch('/todos'),
+  }
+})
+
+export const useTodoMutation = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation(
+    async (body: todo) => {
+      await fetch('/todo', { Method: 'POST', Body: body })
+    },
+    {
+      onSuccess: () => {
+        void queryClient.invalidateQueries(['todos'])
+      },
+      onError,
+    }
+  )
+}
+```
+
+### SSR 지원
+
+모든 Atom은 next.js 앱 또는 Gatsby 앱과 같은 서버 측 렌더링 앱의 컨텍스트 내에서 사용될 수 있습니다. React Query가 SSR 앱 내에서 사용하도록 지원하는 [두 옵션을 모두 사용](https://tanstack.com/query/v5/docs/framework/react/guides/ssr), [수화](https://tanstack.com/query/v5/docs/react/guides/ssr#using-the-hydration-apis) 또는 [`initialData`](https://tanstack.com/query/v5/docs/react/guides/ssr#get-started-fast-with-initialdata)를 사용할 수 있습니다.
+
+### 오류 처리
+
+fetch 오류가 발생할 수 있으며 ErrorBoundary로 포착할 수 있습니다.
+다시 가져오면 일시적인 오류가 복구될 수 있습니다.
+
+자세한 내용은 [실제 사례](https://codesandbox.io/s/4gfp6z)를 참조하세요.
+
+### 개발자 도구
+
+Devtools를 사용하기 위해서는 추가적으로 설치가 필요합니다.
+
+```bash
+npm install @tanstack/react-query-devtools
+```
+
+`<ReactQueryDevtools />`을 `<QueryClientProvider />` 안에 넣기만 하면 됩니다.
+
+```tsx
+import {
+  QueryClientProvider,
+  QueryClient,
+  QueryCache,
+} from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
+import { queryClientAtom } from 'jotai-tanstack-query'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: Infinity,
+    },
+  },
+})
+
+const HydrateAtoms = ({ children }) => {
+  useHydrateAtoms([[queryClientAtom, queryClient]])
+  return children
+}
+
+export const App = () => {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <Provider>
+        <HydrateAtoms>
+          <App />
+        </HydrateAtoms>
+      </Provider>
+      <ReactQueryDevtools />
+    </QueryClientProvider>
+  )
+}
+```
+
+## v0.8.0으로 마이그레이션
+
+### 원자 서명 변경
+
+모든 원자 서명이 TanStack 쿼리와 더욱 일관성을 갖도록 변경되었습니다.
+v0.8.0은 원자 튜플 대신 단일 원자만 반환하므로 이름이 `atomsWithSomething`에서 `atomWithSomething`로 변경됩니다.
+
+```diff
+
+- const [dataAtom, statusAtom] = atomsWithSomething(getOptions, getQueryClient)
++ const dataAtom = atomWithSomething(getOptions, getQueryClient)
+
+```
+
+### 단순화된 반품 구조
+
+`jotai-tanstack-query`의 이전 버전에서는 쿼리 원자 `atomsWithQuery` 및 `atomsWithInfiniteQuery`가 원자 튜플 `[dataAtom, statusAtom]`을 반환했습니다. 이 디자인은 데이터와 해당 상태를 두 개의 서로 다른 원자로 분리했습니다.
+
+#### atomWithQuery 및atomWithInfiniteQuery
+
+- `dataAtom`는 실제 데이터(`TData`)에 접근하는데 사용되었습니다.
+- `statusAtom`는 `isPending`, `isError` 등과 같은 추가 속성을 포함하는 상태 개체(`QueryObserverResult<TData, TError>`)를 제공했습니다.
+
+v0.8.0에서는 `atomWithQuery` 및 `atomWithInfiniteQuery`로 대체되어 단일 `dataAtom`만 반환합니다. 이 `dataAtom`는 이제 `QueryObserverResult<TData, TError>`를 직접 제공하여 Tanstack Query 바인딩 동작과 밀접하게 일치합니다.
+
+새 버전으로 이전하려면 별도의 `dataAtom` 및 `statusAtom` 사용법을 이제 데이터와 상태 정보가 모두 포함된 통합 `dataAtom`로 바꾸세요.
+
+```diff
+- const [dataAtom, statusAtom] = atomsWithQuery(/* ... */);
+- const [data] = useAtom(dataAtom);
+- const [status] = useAtom(statusAtom);
+
++ const dataAtom = atomWithQuery(/* ... */);
++ const [{ data, isPending, isError }] = useAtom(dataAtom);
+```
+
+#### atomWithMutation
+
+`atomsWithQuery` 및 `atomsWithInfiniteQuery`와 마찬가지로 `atomWithMutation`도 원자 튜플 대신 단일 원자를 반환합니다. 원자 값의 반환 유형은 `MutationObserverResult<TData, TError, TVariables, TContext>`입니다.
+
+```diff
+
+- const [, postAtom] = atomsWithMutation(/* ... */);
+- const [post, mutate] = useAtom(postAtom); // 게시물에서 돌연변이 상태에 액세스합니다. 그리고 mutate()를 사용하여 돌연변이를 실행합니다.
+
++ const postAtom = atomWithMutation(/* ... */);
++ const [{ data, error, mutate }] = useAtom(postAtom); // 동일한 원자에서 돌연변이 결과 및 돌연변이 방법에 액세스
+
+```
+
+### 예제
+
+#### 기본 데모
+
+<Stackblitz id="vitejs-vite-pr9eaf" file="src%2FApp.tsx" />
+
+#### 개발자 도구 데모
+
+<Stackblitz id="vitejs-vite-btdqkh" file="src%2FApp.tsx" />
+
+#### 해커뉴스
+
+<Stackblitz id="vitejs-vite-wqsyj8" file="src%2FApp.tsx" />

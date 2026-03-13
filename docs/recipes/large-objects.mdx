@@ -1,0 +1,121 @@
+---
+title: 대형 물체
+nav: 9.01
+keywords: large,object
+---
+
+> 아래 예시와 설명은 이 [코드샌드박스](https://codesandbox.io/s/zealous-sun-f2qnl?file=/src/App.tsx)를 바탕으로 작성되었으므로, 예시와 함께 확인하시면 이해가 더 쉬울 것입니다.
+
+때로는 원자에 저장해야 하는 중첩된 데이터가 있고, 해당 데이터를 다른 수준에서 변경해야 하거나 모든 변경 사항을 듣지 않고 해당 데이터의 일부를 사용해야 할 수도 있습니다.
+
+다음 예를 고려하십시오.
+
+```js
+const initialData = {
+  people: [
+    {
+      name: 'Luke Skywalker',
+      information: { height: 172 },
+      siblings: ['John Skywalker', 'Doe Skywalker'],
+    },
+    {
+      name: 'C-3PO',
+      information: { height: 167 },
+      siblings: ['John Doe', 'Doe John'],
+    },
+  ],
+  films: [
+    {
+      title: 'A New Hope',
+      planets: ['Tatooine', 'Alderaan'],
+    },
+    {
+      title: 'The Empire Strikes Back',
+      planets: ['Hoth'],
+    },
+  ],
+  info: {
+    tags: ['People', 'Films', 'Planets', 'Titles'],
+  },
+}
+```
+
+## focusAtom
+
+> `focusAtom`은 전달한 focus를 바탕으로 새 atom을 생성합니다. [jotai-optics](../extensions/optics.mdx#focusatom)
+
+우리는 이 유틸리티를 사용하여 원자에 초점을 맞추고 데이터의 특정 부분에서 원자를 생성합니다. 예를 들어 위 데이터의 people 속성을 사용해야 할 수도 있습니다. 그 방법은 다음과 같습니다.
+
+```js
+import { atom } from 'jotai'
+import { focusAtom } from 'jotai-optics'
+
+const dataAtom = atom(initialData)
+
+const peopleAtom = focusAtom(dataAtom, (optic) => optic.prop('people'))
+```
+
+`focusAtom`는 `WritableAtom`를 반환합니다. 이는 `peopleAtom` 데이터를 변경할 수 있음을 의미합니다.
+
+위 데이터 예제의 `films` 속성을 변경하면 `peopleAtom`가 다시 렌더링되지 않으므로 이것이 `focusAtom`를 사용하는 이점 중 하나입니다.
+
+## splitAtom
+
+> `splitAtom` 유틸리티는 목록의 각 요소에 대한 atom을 얻고 싶을 때 유용합니다. [jotai/utils](../utilities/split.mdx)
+
+배열을 값으로 반환하는 원자에 대해 이 유틸리티를 사용합니다. 예를 들어 위에서 만든 `peopleAtom`는 people 속성 배열을 반환하므로 해당 배열의 각 항목에 대한 원자를 반환할 수 있습니다. 배열 원자가 쓰기 가능하면 `splitAtom` 반환된 원자도 쓰기 가능하고, 배열 원자가 읽기 전용이면 반환된 원자도 읽기 전용이 됩니다.
+
+```js
+import { splitAtom } from 'jotai/utils'
+
+const peopleAtomsAtom = splitAtom(peopleAtom)
+```
+
+그리고 이것이 우리가 컴포넌트에서 이를 사용하는 방법입니다.
+
+```jsx
+const People = () => {
+  const [peopleAtoms] = useAtom(peopleAtomsAtom)
+  return (
+    <div>
+      {peopleAtoms.map((personAtom) => (
+        <Person personAtom={personAtom} key={`${personAtom}`} />
+      ))}
+    </div>
+  )
+}
+```
+
+## selectAtom
+
+> 이 함수는 값이 원래 atom 값의 함수인 파생 atom을 생성합니다. [jotai/utils](../utilities/select.mdx)
+
+이 유틸리티는 `focusAtom`와 유사하지만 항상 읽기 전용 원자를 반환합니다.
+
+정보 데이터를 소비하고 싶고 해당 데이터는 항상 변경할 수 없다고 가정합니다. 여기에서 읽기 전용 원자를 만들고 생성된 원자를 선택할 수 있습니다.
+
+```js
+// 먼저 initialData.info를 기반으로 파생 atom을 만듭니다.
+const infoAtom = atom((get) => get(dataAtom).info)
+```
+
+그런 다음 이를 구성 요소에서 사용합니다.
+
+```jsx
+import { atom, useAtom } from 'jotai'
+import { selectAtom, splitAtom } from 'jotai/utils'
+
+const tagsSelector = (s) => s.tags
+const Tags = () => {
+  const tagsAtom = selectAtom(infoAtom, tagsSelector)
+  const tagsAtomsAtom = splitAtom(tagsAtom)
+  const [tagAtoms] = useAtom(tagsAtomsAtom)
+  return (
+    <div>
+      {tagAtoms.map((tagAtom) => (
+        <Tag key={`${tagAtom}`} tagAtom={tagAtom} />
+      ))}
+    </div>
+  )
+}
+```

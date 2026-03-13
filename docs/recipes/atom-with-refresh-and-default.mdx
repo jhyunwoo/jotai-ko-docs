@@ -1,0 +1,75 @@
+---
+title: atomWithRefreshAndDefault
+nav: 9.07
+keywords: creators,refresh,default
+---
+
+> 이는 [atomWithDefault](../utilities/resettable.mdx#atomwithdefault)의 또 다른 구현을 위한 것입니다.
+
+### atomWithDefault 동작을 되돌아보세요.
+
+atomWithDefault 섹션의 예제 코드에서 볼 수 있듯이 생성된 원자 `count2Atom = atomWithDefault((get) => get(count1Atom) * 2)`를 업데이트한 후 두 원자의 관계가 끊어집니다.
+무슨 일이 일어났는지 확인해 볼까요?
+
+- 1. "increment count1"을 클릭하면 count1은 2, count2는 4가 됩니다.
+- 2. "increment count2"를 클릭하면 count1은 2, count2는 5가 됩니다. (연결이 끊어졌습니다!!)
+
+count2Atom을 업데이트한 후에는 해당 원자는 아무런 관련이 없습니다. 그래서,
+
+- "increment count1"을 클릭하면 count1만 증가됩니다.
+- count2Atom을 재설정하더라도 이러한 종속 관계는 다시는 돌아오지 않습니다.
+
+### 동기 부여
+
+어떤 경우에는
+
+- 연결을 끊고 재설정한 후 다시 관계로 돌아와야 합니다.
+- 파생된 원자는 업데이트된 원래 원자를 기반으로 재설정되어야 합니다.
+- 파생된 모든 원자를 재설정하고 싶지만 가능한 한 간단하게 작동하고 싶습니다.
+
+어떻게 그런 사례를 만들 수 있나요?
+다음은atomWithDefault 대신 새로 고칠 수 있는 Atom을 제공하는 함수를 생성하는 선언적 방법입니다.
+
+```js
+const refreshCountAtom = atom(0)
+
+const baseDataAtom = atom(1) // 원본 데이터(예: 기본 개수1Atom
+const dataAtom = atom(
+  (get) => {
+    get(refreshCountAtom) // atomWithRefresh에서 소개되었습니다.
+    return get(baseDataAtom)
+  },
+  (get, set, update) => {
+    set(baseDataAtom, update)
+  },
+)
+
+const atomWithRefreshAndDefault = (refreshAtom, getDefault) => {
+  const overwrittenAtom = atom(null)
+  return atom(
+    (get) => {
+      const lastState = get(overwrittenAtom)
+      if (lastState && lastState.refresh === get(refreshAtom)) {
+        return lastState.value
+      }
+      return getDefault(get)
+    },
+    (get, set, update) => {
+      set(overwrittenAtom, { refresh: get(refreshAtom), value: update })
+    },
+  )
+}
+
+// `atomWithDefault((get) => get(count1Atom) * 2)`의 대안입니다.
+const refreshableAtom = atomWithRefreshAndDefault(
+  refreshCountAtom,
+  (get) => get(dataAtom) * 2,
+)
+
+// 하나의 원자만 업데이트하여 재설정할 수 있습니다.
+const resetRootAtom = atom(null, (get, set) => {
+  set(refreshCountAtom, get(refreshCountAtom) + 1)
+})
+```
+
+<Stackblitz id="vitejs-vite-1m7ce3" file="src%2FApp.tsx" />

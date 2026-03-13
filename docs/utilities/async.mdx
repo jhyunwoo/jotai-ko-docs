@@ -1,0 +1,131 @@
+---
+title: Async
+nav: 3.03
+keywords: load,loadable,observable
+---
+
+모든 atom은 async read나 async write 같은 비동기 동작을 지원합니다. 다만, 여기에는 이를 더 세밀하게 제어하기 위한 API들이 설명되어 있습니다.
+
+## loadable
+
+async atom이 suspend되거나 error boundary로 throw되는 것을 원하지 않는다면(예: 로딩과 에러 로직을 더 세밀하게 제어하고 싶다면) `loadable` 유틸리티를 사용할 수 있습니다.
+
+모든 atom에 대해 같은 방식으로 동작합니다. atom을 `loadable` 유틸리티로 감싸기만 하면 됩니다. 그러면 `loading`, `hasData`, `hasError` 세 상태 중 하나를 반환합니다.
+
+```ts
+{
+	state: 'loading' | 'hasData' | 'hasError',
+	data?: any,
+	error?: any,
+}
+```
+
+```jsx
+import { loadable } from "jotai/utils"
+
+const asyncAtom = atom(async (get) => ...)
+const loadableAtom = loadable(asyncAtom)
+// <Suspense> 요소로 감쌀 필요가 없습니다.
+const Component = () => {
+  const [value] = useAtom(loadableAtom)
+  if (value.state === 'hasError') return <Text>{value.error}</Text>
+  if (value.state === 'loading') {
+    return <Text>Loading...</Text>
+  }
+  console.log(value.data) // Promise의 결과
+  return <Text>Value: {value.data}</Text>
+}
+```
+
+## atomWithObservable
+
+참조: https://github.com/pmndrs/jotai/pull/341
+
+### 사용법
+
+```jsx
+import { useAtom } from 'jotai'
+import { atomWithObservable } from 'jotai/utils'
+import { interval } from 'rxjs'
+import { map } from 'rxjs/operators'
+
+const counterSubject = interval(1000).pipe(map((i) => `#${i}`))
+const counterAtom = atomWithObservable(() => counterSubject)
+
+const Counter = () => {
+  const [counter] = useAtom(counterAtom)
+  return <div>count: {counter}</div>
+}
+```
+
+`atomWithObservable` 함수는 rxjs(또는 유사한 라이브러리)의 `subject` 또는 `observable`로부터 atom을 생성합니다.
+이 atom의 값은 스트림에서 가장 마지막에 emit된 값이 됩니다.
+
+이 atom을 사용하려면 컴포넌트를 `<Suspense>`로 감싸야 합니다. [guides/async](../guides/async.mdx)를 참고하세요.
+
+### 초기값
+
+`atomWithObservable`는 atom의 초기값을 지정할 수 있는 두 번째 선택적 매개변수 `{ initialValue }`를 받습니다. `initialValue`가 제공되면 `atomWithObservable`는 suspend하지 않고, observable에서 첫 값을 받기 전에 초기값을 보여 줍니다. `initialValue`는 값일 수도 있고 값을 반환하는 함수일 수도 있습니다.
+
+```js
+const counterAtom = atomWithObservable(() => counterSubject, {
+  initialValue: 10,
+})
+
+const counterAtom2 = atomWithObservable(() => counterSubject, {
+  initialValue: () => Math.random(),
+})
+```
+
+### Stackblitz
+
+<Stackblitz id="vitejs-vite-3bkqrb" file="src%2FApp.tsx" />
+
+## unwrap
+
+`unwrap` 유틸리티는 비동기 atom을 `loadable`과 비슷한 동기 atom으로 변환합니다.
+`loadable`와 달리 대체 값을 구성할 수 있습니다.
+`loadable`와 달리 오류는 처리되지 않고 그냥 발생합니다.
+
+`unwrap`의 주된 사용 사례는 atom 파생을 더 쉽게 만드는 것입니다.
+이는 v2 API에 특히 유용합니다.
+read 함수의 `get`은 promise를 resolve하지 않기 때문입니다.
+
+### 서명
+
+```ts
+function unwrap<Value, Args extends unknown[], Result>(
+  anAtom: WritableAtom<Value, Args, Result>,
+): WritableAtom<Awaited<Value> | undefined, Args, Result>
+
+function unwrap<Value, Args extends unknown[], Result, PendingValue>(
+  anAtom: WritableAtom<Value, Args, Result>,
+  fallback: (prev?: Awaited<Value>) => PendingValue,
+): WritableAtom<Awaited<Value> | PendingValue, Args, Result>
+
+function unwrap<Value>(anAtom: Atom<Value>): Atom<Awaited<Value> | undefined>
+
+function unwrap<Value, PendingValue>(
+  anAtom: Atom<Value>,
+  fallback: (prev?: Awaited<Value>) => PendingValue,
+): Atom<Awaited<Value> | PendingValue>
+```
+
+### 사용법
+
+```tsx
+import { atom } from 'jotai'
+import { unwrap } from 'jotai/utils'
+
+const countAtom = atom(0)
+const delayedCountAtom = atom(async (get) => {
+  await new Promise((r) => setTimeout(r, 500))
+  return get(countAtom)
+})
+
+const unwrapped1Atom = unwrap(delayedCountAtom)
+// pending 상태에서는 값이 `undefined`입니다.
+
+const unwrapped2Atom = unwrap(delayedCountAtom, (prev) => prev ?? 0)
+// 초기값은 `0`이고, 이후 업데이트에서는 이전 값을 유지합니다.
+```

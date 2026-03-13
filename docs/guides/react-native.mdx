@@ -1,0 +1,21 @@
+---
+title: React Native
+description: React Native에서 Jotai 사용하는 방법
+nav: 8.06
+keywords: native,ios,android
+---
+
+Jotai atom은 별도의 변경 없이 React Native 애플리케이션에서 사용할 수 있습니다.
+우리의 목표는 언제나 React Native와 100% 호환되는 것입니다.
+
+### 영속성
+
+영속성 기능과 관련해서는 React Native 전용 구현이 [utils 번들의 `atomWithStorage` 함수](../utilities/storage.mdx)에 정리되어 있습니다.
+
+### 성능
+
+현재까지 알려진 바로는, 앱에서 Jotai를 사용할 때 React Native에 특화된 추가 오버헤드는 없습니다. 일부 라이브러리는 실용적인 사용을 위해 저장된 데이터에 몇 개 또는 아주 많은 추가 속성과 메서드를 붙이지만, Jotai는 다르게 동작하며 언제나 매우 단순한 값을 다루게 됩니다.
+
+Jotai의 atomic 아키텍처는 로직과 데이터를 분리하도록 유도하므로, 각 렌더링을 세밀하게 제어하기에 좋습니다. ([정확히는 commit 단위입니다](https://legacy.reactjs.org/blog/2018/09/10/introducing-the-react-profiler.html#browsing-commits).) 그 결과 더 좋은 성능을 얻을 수 있습니다.
+
+항상 기억해야 할 점은 렌더링은 빨라야 한다는 것입니다. 계산 로직은 가능한 한 비동기 action으로 분리하세요.

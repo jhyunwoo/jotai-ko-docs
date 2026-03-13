@@ -1,0 +1,208 @@
+---
+title: Resettable
+nav: 3.04
+keywords: reset,default
+---
+
+## atomWithReset
+
+참조: https://github.com/pmndrs/jotai/issues/41
+
+```ts
+function atomWithReset<Value>(
+  initialValue: Value,
+): WritableAtom<Value, SetStateAction<Value> | typeof RESET>
+```
+
+다음을 사용하여 `initialValue`로 재설정될 수 있는 원자를 생성합니다.
+[`useResetAtom`](use-reset-atom.mdx) 후크. 그것은 정확히 동일하게 작동합니다
+원시 원자와 같은 방식으로 사용할 수 있지만 특별한 값으로 설정할 수도 있습니다.
+[`RESET`](reset.mdx). [재설정 가능한 원자](../utilities/resettable.mdx)의 예시를 참조하세요.
+
+### 예
+
+```js
+import { atomWithReset } from 'jotai/utils'
+
+const dollarsAtom = atomWithReset(0)
+const todoListAtom = atomWithReset([
+  { description: 'Add a todo', checked: false },
+])
+```
+
+## RESET
+
+참조: https://github.com/pmndrs/jotai/issues/217
+
+```ts
+const RESET: unique symbol
+```
+
+[재설정 가능한 원자](../utilities/resettable.mdx)에서 허용되는 특수 값
+[`atomWithReset`](../utilities/resettable.mdx), [`atomWithDefault`](../utilities/resettable.mdx)로 생성됨
+또는 `RESET` 기호를 허용하는 경우 `atom`로 생성된 쓰기 가능한 원자입니다.
+
+### 예
+
+```jsx
+import { atom, useSetAtom } from 'jotai'
+import { atomWithReset, useResetAtom, RESET } from 'jotai/utils'
+
+const dollarsAtom = atomWithReset(0)
+const centsAtom = atom(
+  (get) => get(dollarsAtom) * 100,
+  (get, set, newValue: number | typeof RESET) =>
+    set(dollarsAtom, newValue === RESET ? newValue : newValue / 100)
+)
+
+const ResetExample = () => {
+  const setDollars = useSetAtom(dollarsAtom)
+  const resetCents = useResetAtom(centsAtom)
+
+  return (
+    <>
+      <button onClick={() => setDollars(RESET)}>Reset dollars</button>
+      <button onClick={resetCents}>Reset cents</button>
+    </>
+  )
+}
+```
+
+## useResetAtom
+
+```ts
+function useResetAtom<Value>(
+  anAtom: WritableAtom<Value, typeof RESET>,
+): () => void | Promise<void>
+```
+
+[재설정 가능한 원자](../utilities/resettable.mdx)를 초기 값으로 재설정합니다.
+
+### 예
+
+```jsx
+import { useResetAtom } from 'jotai/utils'
+import { todoListAtom } from './store'
+
+const TodoResetButton = () => {
+  const resetTodoList = useResetAtom(todoListAtom)
+  return <button onClick={resetTodoList}>Reset</button>
+}
+```
+
+## atomWithDefault
+
+참조: https://github.com/pmndrs/jotai/issues/352
+
+### 사용법
+
+재설정 가능한 원시 원자를 생성하는 기능입니다.
+기본값은 정적 초기값 대신 읽기 함수를 사용하여 지정할 수 있습니다.
+
+```js
+import { atomWithDefault } from 'jotai/utils'
+
+const count1Atom = atom(1)
+const count2Atom = atomWithDefault((get) => get(count1Atom) * 2)
+```
+
+### Stackblitz
+
+<Stackblitz id="vitejs-vite-gffb5v" file="src%2FApp.tsx" />
+
+### 기본값 재설정
+
+`atomWithDefault` 원자 값을 원래 기본값으로 재설정할 수 있습니다.
+
+```jsx
+import { useAtom } from 'jotai'
+import { atomWithDefault, useResetAtom, RESET } from 'jotai/utils'
+
+const count1Atom = atom(1)
+const count2Atom = atomWithDefault((get) => get(count1Atom) * 2)
+
+const Counter = () => {
+  const [count1, setCount1] = useAtom(count1Atom)
+  const [count2, setCount2] = useAtom(count2Atom)
+  const resetCount2 = useResetAtom(count2Atom)
+
+  return (
+    <>
+      <div>
+        count1: {count1}, count2: {count2}
+      </div>
+      <button onClick={() => setCount1((c) => c + 1)}>increment count1</button>
+      <button onClick={() => setCount2((c) => c + 1)}>increment count2</button>
+      <button onClick={() => resetCount2()}>Reset with useResetAtom</button>
+      <button onClick={() => setCount2(RESET)}>Reset with RESET const</button>
+    </>
+  )
+}
+```
+
+이는 `atomWithDefault` 원자 값을 덮어쓸 때 유용할 수 있습니다.
+`set` 기능을 사용합니다. 이 경우 제공된 `getter` 기능이 사용됩니다.
+더 이상 사용되지 않으며 종속성 원자의 변경 사항으로 인해 업데이트가 트리거되지 않습니다.
+
+값을 재설정하면 원래 기본값을 복원할 수 있습니다.
+`set` 기능을 통해 이전에 변경된 내용을 삭제합니다.
+
+## atomWithRefresh
+
+```ts
+function atomWithRefresh<Value>(
+  read: Read<Value, [], void>,
+): WritableAtom<Value, [], void>
+```
+
+새로 고칠 수 있는 원자를 생성합니다.
+이는 읽기 기능을 강제로 재평가하는 것입니다.
+
+이는 비동기 데이터를 새로 고쳐야 할 때 유용합니다.
+"당겨서 새로 고침" 기능을 구현하는 데에도 사용할 수 있습니다.
+
+```ts
+function atomWithRefresh<Value, Args extends unknown[], Result>(
+  read: Read<Value, Args, Result>,
+  write: Write<Value, Args, Result>,
+): WritableAtom<Value, Args | [], Result | void>
+```
+
+`set`에 0개의 인수를 전달하면 새로 고쳐집니다.
+`set`에 하나 이상의 인수를 전달하면 "쓰기" 기능이 호출됩니다.
+
+### 예
+
+새로 고칠 수 있는 데이터 소스를 구현하는 데 이를 사용하는 방법은 다음과 같습니다.
+
+```js
+import { atomWithRefresh } from 'jotai/utils'
+
+const postsAtom = atomWithRefresh((get) =>
+  fetch('https://jsonplaceholder.typicode.com/posts').then((r) => r.json()),
+)
+```
+
+구성요소에서:
+
+```jsx
+const PostsList = () => {
+  const [posts, refreshPosts] = useAtom(postsAtom)
+
+  return (
+    <div>
+      <ul>
+        {posts.map((post) => (
+          <li key={post.id}>{post.title}</li>
+        ))}
+      </ul>
+
+      {/* Clicking this button will re-fetch the posts */}
+      <button type="button" onClick={() => refreshPosts()}>
+        Refresh posts
+      </button>
+    </div>
+  )
+}
+```
+

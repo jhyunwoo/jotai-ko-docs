@@ -1,0 +1,393 @@
+---
+title: Devtools
+description: 이 문서에서는 Jotai용 Devtools에 대해 설명합니다.
+nav: 6.03
+keywords: devtools,debug,snapshot
+---
+
+### 설치
+
+시작하려면 프로젝트에 `jotai-devtools`를 설치하세요.
+
+```sh
+npm install jotai-devtools
+```
+
+### 메모
+
+- `<DevTools/>`는 프로덕션 빌드에서 트리 셰이크가 가능하도록 최적화되어 있으며 **비프로덕션 환경에서만 작동합니다**
+- 후크는 개발 전용이며 비프로덕션 환경에서 작동하도록 설계되었습니다.
+- 피드백을 환영합니다. 문제를 신고하거나 [Jotai DevTools GitHub 레포](https://github.com/jotaijs/jotai-devtools/discussions)에 질문을 남겨주세요.
+
+### 빠른 링크
+
+- [UI 개발 도구](#ui-devtools)
+- 후크
+  - [useAtomsDebugValue](#useatomsdebugvalue)
+  - [useAtomDevtools](#useatomdevtools)
+  - [useAtomsDevtools](#useatomsdevtools)
+  - [useAtomsSnapshot](#useatomssnapshot)
+  - [useGotoAtomsSnapshot](#usegotoatomssnapshot)
+- 마이그레이션 가이드
+  - [`@emotion/react`에서 이전](https://github.com/jotaijs/jotai-devtools?tab=readme-ov-file#migrate-%C6%92rom-emotionreact-to-native-css)
+
+### UI 개발자 도구
+
+UI 기반 Jotai DevTool로 개발 경험을 향상하세요.
+
+#### Babel 플러그인 설정 - (_선택사항이지만 적극 권장함_)
+
+최적의 디버깅 환경을 위해 [`jotai-babel`](https://github.com/jotaijs/jotai-babel) 플러그인을 사용하세요. [바벨](../tools/babel) 페이지 및/또는 [swc](../tools/swc) 페이지에서 전체 가이드를 찾아보세요.
+
+예:
+
+```ts
+{
+  "presets": [
+    // 사전 설정에는 두 가지 플러그인이 포함되어 있습니다.
+    // - Atom에 대한 핫 리로드를 활성화하는 jotai-babel/plugin-react-refresh
+    // - 자동으로 Atom에 디버그 라벨을 추가하는 jotai-babel/plugin-debug-label
+    'jotai-babel/preset'
+  ]
+}
+```
+
+Vite + React 프로젝트의 예:
+
+```ts
+// vite.config.ts
+
+export default defineConfig({
+  plugins: [
+    react({
+      babel: {
+        presets: ['jotai-babel/preset'],
+      },
+    }),
+  ],
+})
+```
+
+### 다음 JS 설정
+
+_[Next.js](https://nextjs.org)을 사용하지 않는 경우 이 섹션을 건너뛸 수 있습니다._
+
+UI CSS 및 구성요소가 올바르게 변환되도록 하려면 `transpilePackages`를 활성화하세요.
+
+```ts
+// 다음.config.ts
+const nextConfig = {
+  // 여기에서 자세히 알아보세요 - https://nextjs.org/docs/advanced-features/compiler#module-transpilation
+  // UI CSS를 올바르게 변환하는 데 필요합니다 👇
+  transpilePackages: ['jotai-devtools'],
+}
+module.exports = nextConfig
+```
+
+### 사용 가능한 소품
+
+```ts
+type DevToolsProps = {
+  // 기본값은 false
+  isInitialOpen?: boolean
+  // 커스텀 store 전달
+  store?: Store
+  // 기본값은 'light'
+  theme?: 'dark' | 'light'
+  // 트리거 버튼의 위치 설정
+  // 기본값은 `bottom-left`
+  position?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left'
+  // CSP를 통해 jotai-devtools 특정 인라인 스타일을 허용 목록에 추가하는 사용자 정의 nonce
+  nonce?: string
+  options?: {
+    // 개인 원자는 `atomWithStorage`와 같은 원자 생성기에서 내부적으로 사용됩니다.
+    // 또는 `atomWithLocation` 등을 사용하여 내부 상태를 관리합니다.
+    // 기본값은 `false`
+    shouldShowPrivateAtoms?: boolean
+    // Atom 뷰어 탭, 타임라인 탭 등에서 초기 렌더링 시 JSON 트리 보기를 확장합니다.
+    // 기본값은 `false`
+    shouldExpandJsonTreeViewInitially?: boolean
+    // 시간 여행 재생의 각 단계 사이의 간격(밀리초)입니다.
+    // 기본값은 `750ms`
+    timeTravelPlaybackInterval?: number
+    // 기록에 보관할 최대 스냅샷 수입니다.
+    // 숫자가 높을수록 더 많은 메모리를 소비하게 됩니다.
+    // 기본값은 `Infinity`입니다. 추천: `~30`
+    snapshotHistoryLimit?: number
+  }
+}
+```
+
+### 사용법
+
+#### Provider-less
+
+```tsx
+import { DevTools } from 'jotai-devtools'
+import 'jotai-devtools/styles.css'
+
+const App = () => {
+  return (
+    <>
+      <DevTools />
+      {/* your app */}
+    </>
+  )
+}
+```
+
+#### With Provider
+
+```tsx
+import { createStore } from 'jotai'
+import { DevTools } from 'jotai-devtools'
+import 'jotai-devtools/styles.css'
+
+const customStore = createStore()
+
+const App = () => {
+  return (
+    <Provider store={customStore}>
+      <DevTools store={customStore} />
+      {/* your app */}
+    </Provider>
+  )
+}
+```
+
+### Preview
+
+<Stackblitz id="vitejs-vite-hzldhk" file="src%2FApp.tsx" />
+
+## useAtomsDebugValue
+
+`useAtomsDebugValue`는 React Devtools의 모든 원자 값을 표시하는 React 후크입니다.
+
+```ts
+function useAtomsDebugValue(options?: {
+  store?: Store
+  enabled?: boolean
+}): void
+```
+
+내부적으로는 DEV 모드에서만 유효한 `useDebugValue`를 사용합니다.
+후크가 있는 곳에서 접근 가능한 모든 원자를 포착합니다.
+
+### 예
+
+```jsx
+import { useAtomsDebugValue } from 'jotai-devtools/utils'
+
+const textAtom = atom('hello')
+textAtom.debugLabel = 'textAtom'
+
+const lenAtom = atom((get) => get(textAtom).length)
+lenAtom.debugLabel = 'lenAtom'
+
+const TextBox = () => {
+  const [text, setText] = useAtom(textAtom)
+  const [len] = useAtom(lenAtom)
+  return (
+    <span>
+      <input value={text} onChange={(e) => setText(e.target.value)} />({len})
+    </span>
+  )
+}
+
+const DebugAtoms = () => {
+  useAtomsDebugValue()
+  return null
+}
+
+const App = () => (
+  <Provider>
+    <DebugAtoms />
+    <TextBox />
+  </Provider>
+)
+```
+
+<Stackblitz id="vitejs-vite-dmts5e" file="src%2FApp.tsx" />
+
+## useAtomDevtools
+
+`useAtomDevtools`는 특정 Atom에 대한 ReduxDevTools 확장을 관리하는 React 후크입니다.
+
+```ts
+function useAtomDevtools<Value>(
+  anAtom: WritableAtom<Value, Value>,
+  options?: {
+    store?: Store
+    name?: string
+    enabled?: boolean
+  },
+): void
+```
+
+`useAtomDevtools` 후크는 일반 유형 매개변수(원자에 저장된 유형을 미러링)를 허용합니다. 또한 후크는 두 개의 호출 매개변수 `anAtom` 및 `name`를 허용합니다.
+`anAtom`는 devtools 인스턴스에 연결될 원자입니다. `name`는 devtools 인스턴스의 디버그 라벨을 정의하는 선택적 매개변수입니다. `name`가 정의되지 않은 경우 `atom.debugLabel`가 대신 사용됩니다.
+
+### 예
+
+```ts
+import { useAtomDevtools } from 'jotai-devtools/utils'
+
+// Atom에 저장된 유형에 대한 인터페이스입니다.
+export interface Task {
+  label: string
+  complete: boolean
+}
+
+// 디버그할 원자입니다.
+export const tasksAtom = atom<Task[]>([])
+
+// useAtomDevtools 이름 매개변수가 정의되지 않은 경우 이 값이 대신 사용됩니다.
+tasksAtom.debugLabel = 'Tasks'
+
+export const useTasksDevtools = () => {
+  // 디버깅을 위해 Atom을 전달하면 간단히 후크를 호출할 수 있습니다.
+  useAtomDevtools(tasksAtom)
+
+  // 사용자 정의 유형 매개변수 지정
+  useAtomDevtools<Task[]>(tasksAtom)
+
+  // 두 개의 devtools 인스턴스를 동일한 Atom에 연결하고 사용자 정의 이름으로 구별할 수 있습니다.
+  useAtomDevtools(tasksAtom, 'Tasks (Instance 1)')
+  useAtomDevtools(tasksAtom, 'Tasks (Instance 2)')
+}
+```
+
+## useAtomsDevtools
+
+⚠️ 참고: 이 후크는 실험적이며(피드백 환영) `process.env.NODE_ENV !== 'production'` 환경에서만 작동합니다.
+
+`useAtomsDevtools`는 `useAtomDevtools`의 포괄적인 버전으로, 특정 원자를 표시하는 대신 저장소에 있는 모든 원자를 표시합니다.
+
+```ts
+function useAtomsDevtools(
+  name: string,
+  options?: {
+    store?: Store
+    enabled?: boolean
+  },
+): void
+```
+
+Redux devtools 인스턴스 이름을 지정하는 데 필요한 `name` 매개변수와 `store` 매개변수가 필요합니다.
+
+이 API에 대한 제한 사항으로, 소비된 원자가 해당 구성 요소(아래 예에서는 `AtomsDevtools`)보다 React 트리의 낮은 위치에 있어야 하는 구성 요소에 `useAtomsDevtools`를 넣어야 합니다.
+`AtomsDevtools` 구성요소는 우리 앱의 모범 사례로 간주될 수 있습니다.
+
+### 예
+
+```jsx
+const countAtom = atom(0);
+const doubleCountAtom = atom((get) => get(countAtom) * 2);
+
+function Counter() {
+  const  [count, setCount] =  useAtom(countAtom);
+  const  [doubleCount] =  useAtom(doubleCountAtom);
+
+  ...
+}
+
+const AtomsDevtools = ({ children }) => {
+  useAtomsDevtools('demo')
+  return children
+}
+
+export default function App()  {
+  return (
+    <AtomsDevtools>
+      <Counter />
+    </AtomsDevtools>
+  )
+ }
+```
+
+<Stackblitz id="vitejs-vite-lpr5rs" file="src%2FApp.tsx" />
+
+## useAtomsSnapshot
+
+⚠️ 참고: 이 후크는 `process.env.NODE_ENV !== 'production'` 환경에서만 작동합니다. 그리고 프로덕션에서는 정적 빈 값을 반환합니다.
+
+`useAtomsSnapshot` 현재 장착된 원자와 해당 상태의 스냅샷을 찍습니다.
+
+```ts
+function useAtomsSnapshot(options?: { store?: Store }): AtomsSnapshot
+```
+
+`store` 매개변수를 허용하고 기본적으로 `Map<AnyAtom, unknown>`인 `AtomsSnapshot`를 반환합니다. `Map` API를 사용하여 원자와 그 상태를 반복할 수 있습니다.
+이 후크는 주로 디버깅 및 devtools 사용 사례를 위한 것입니다.
+
+이 후크를 사용하면 모든 상태 변경에 대해 구성 요소가 다시 렌더링되므로 주의하세요.
+
+### 예
+
+```jsx
+import { Provider } from 'jotai'
+import { useAtomsSnapshot } from 'jotai-devtools/utils'
+
+const RegisteredAtoms = () => {
+  const atoms = useAtomsSnapshot()
+
+  return (
+    <div>
+      <p>Atom count: {atoms.size}</p>
+      <div>
+        {Array.from(atoms).map(([atom, atomValue]) => (
+          <p key={`${atom}`}>{`${atom.debugLabel}: ${atomValue}`}</p>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const App = () => (
+  <Provider>
+    <RegisteredAtoms />
+  </Provider>
+)
+```
+
+## useGotoAtomsSnapshot
+
+⚠️ 참고: 이 후크는 `process.env.NODE_ENV !== 'production'` 환경에서만 작동합니다. 그리고 프로덕션 환경에서는 빈 함수처럼 작동합니다.
+
+`useGotoAtomsSnapshot`는 전달된 스냅샷과 일치하도록 현재 Jotai 상태를 업데이트합니다.
+
+```ts
+function useGotoAtomsSnapshot(options?: {
+  store?: Store
+}): (values: Iterable<readonly [AnyAtom, unknown]>) => void
+```
+
+이 후크는 `useAtomsSnapshot` 후크에서 `snapshot`를 가져와 Jotai 상태를 업데이트하는 콜백을 반환합니다. `store` 매개변수를 허용합니다.
+이 후크는 주로 디버깅 및 devtools 사용 사례를 위한 것입니다.
+
+### 예
+
+```jsx
+import { Provider } from 'jotai'
+import { useAtomsSnapshot, useGotoAtomsSnapshot } from 'jotai-devtools/utils'
+
+const petAtom = atom('cat')
+const colorAtom = atom('blue')
+
+const UpdateSnapshot = () => {
+  const snapshot = useAtomsSnapshot()
+  const goToSnapshot = useGotoAtomsSnapshot()
+  return (
+    <button
+      onClick={() => {
+        const newSnapshot = new Map(snapshot)
+        newSnapshot.set(petAtom, 'dog')
+        newSnapshot.set(colorAtom, 'green')
+        goToSnapshot(newSnapshot)
+      }}
+    >
+      Go to snapshot
+    </button>
+  )
+}
+```

@@ -1,0 +1,269 @@
+---
+title: v2 API 마이그레이션
+description: 새로운 "Async" API
+nav: 8.0
+---
+
+RFC: https://github.com/pmndrs/jotai/discussions/1514
+
+Jotai v1은 2022년 6월에 출시되었고, 그 뒤로 여러 가지 피드백이 있었습니다.
+React 역시 promise를 일급으로 지원하는 방향을 제안하고 있습니다.
+Jotai v2에는 새로운 API가 포함됩니다.
+
+아쉽게도 새로운 기능과 함께 몇 가지 breaking change도 들어갑니다.
+
+### 어떤 기능이 새로 추가되나요
+
+#### Vanilla library
+
+Jotai는 vanilla(React가 아닌) 함수와 React 함수를
+분리해서 제공합니다.
+이들은 `jotai/vanilla` 같은 대체 엔트리 포인트에서 제공됩니다.
+
+#### Store API
+
+Jotai는 atom 값을 직접 조작할 수 있도록 store 인터페이스를 노출합니다.
+
+```js
+import { createStore } from 'jotai' // 또는 'jotai/vanilla'에서 가져옵니다
+
+const store = createStore()
+store.set(fooAtom, 'foo')
+
+console.log(store.get(fooAtom)) // "foo"를 출력합니다
+
+const unsub = store.sub(fooAtom, () => {
+  console.log('fooAtom value in store is changed')
+})
+// 구독을 해제하려면 unsub()를 호출합니다.
+```
+
+자신만의 React Context를 만들어 store를 전달할 수도 있습니다.
+
+#### 더 유연해진 atom `write` 함수
+
+write 함수는 여러 인자를 받을 수 있고,
+값을 반환할 수도 있습니다.
+
+```js
+atom(
+  (get) => get(...),
+  (get, set, arg1, arg2, ...) => {
+    ...
+    return someValue
+  }
+)
+```
+
+### 어떤 점이 깨지나요
+
+#### Async atom은 더 이상 특별 취급되지 않습니다
+
+Async atom은 promise 값을 가진 평범한 atom일 뿐입니다.
+atom getter 함수는 promise를 resolve하지 않습니다.
+반면 `useAtom` 훅은 계속 promise를 resolve합니다.
+
+`splitAtom` 같은 일부 util은 sync atom을 기대하기 때문에
+async atom에서는 동작하지 않습니다.
+
+#### Writable atom 타입이 변경됩니다 (TypeScript only)
+
+```ts
+// 이전
+WritableAtom<Value, Arg, Result extends void | Promise<void>>
+
+// 새 버전
+WritableAtom<Value, Args extends unknown[], Result>
+```
+
+일반적으로는 `WritableAtom` 타입을 직접 쓰는 일을 피하는 편이 좋습니다.
+
+#### 일부 함수가 제거됩니다
+
+- Provider의 `initialValues` prop은 제거됩니다. `store`가 더 유연하기 때문입니다.
+- Provider의 `scope` prop은 제거됩니다. 직접 context를 만들 수 있기 때문입니다.
+- `abortableAtom` util은 해당 기능이 기본으로 포함되므로 제거됩니다.
+- `waitForAll` util은 `Promise.all`이면 충분하므로 제거됩니다.
+
+### 마이그레이션 가이드
+
+#### Async atom
+
+async atom의 read 함수에서 사용하는 `get` 함수는
+promise를 resolve하지 않으므로 `await` 또는 `.then()`을 써야 합니다.
+
+짧게 말하면, 변경점은 아래와 같습니다.
+(TypeScript 사용자라면 타입이 어디를 바꿔야 하는지 알려줄 것입니다.)
+
+##### 이전 API
+
+```js
+const asyncAtom = atom(async () => 'hello')
+const derivedAtom = atom((get) => get(asyncAtom).toUppercase())
+```
+
+##### 새 API
+
+```js
+const asyncAtom = atom(async () => 'hello')
+const derivedAtom = atom(async (get) => (await get(asyncAtom)).toUppercase())
+// 또는
+const derivedAtom = atom((get) => get(asyncAtom).then((x) => x.toUppercase()))
+```
+
+#### Provider의 `initialValues` prop
+
+##### 이전 API
+
+```jsx
+const countAtom = atom(0)
+
+  // 컴포넌트 안에서
+  <Provider initialValues={[[countAtom, 1]]}>
+    ...
+```
+
+##### 새 API
+
+```jsx
+const countAtom = atom(0)
+
+const HydrateAtoms = ({ initialValues, children }) => {
+  useHydrateAtoms(initialValues)
+  return children
+}
+
+  // 컴포넌트 안에서
+  <Provider>
+    <HydrateAtoms initialValues={[[countAtom, 1]]}>
+      ...
+```
+
+#### Provider의 `scope` prop
+
+##### 이전 API
+
+```jsx
+const myScope = Symbol()
+
+  // 부모 컴포넌트
+  <Provider scope={myScope}>
+    ...
+  </Provider>
+
+  // 자식 컴포넌트
+  useAtom(..., myScope)
+```
+
+##### 새 API
+
+```jsx
+const MyContext = createContext()
+const store = createStore()
+
+  // 부모 컴포넌트
+  <MyContext.Provider value={store}>
+    ...
+  </MyContext.Provider>
+
+  // 자식 컴포넌트
+  const store = useContext(MyContext)
+  useAtom(..., { store })
+```
+
+#### `abortableAtom` 유틸리티
+
+이제는 일반 `atom`이 이를 지원하므로,
+더 이상 예전의 `abortableAtom` util이 필요하지 않습니다.
+
+##### 이전 API
+
+```js
+const asyncAtom = abortableAtom(async (get, { signal }) => {
+ ...
+}
+```
+
+##### 새 API
+
+```js
+const asyncAtom = atom(async (get, { signal }) => {
+  ...
+}
+```
+
+#### `waitForAll` 유틸리티
+
+기본 Promise API를 사용할 수 있으므로
+이제 예전의 `waitForAll` util은 필요하지 않습니다.
+
+##### 이전 API
+
+```js
+const allAtom = waitForAll([fooAtom, barAtom])
+```
+
+##### 새 API
+
+```js
+const allAtom = atom((get) => Promise.all([get(fooAtom), get(barAtom)]))
+```
+
+렌더 함수 안에서 atom을 만들면 [무한 루프](../core/atom.mdx#note-about-creating-an-atom-in-render-function)가 발생할 수 있다는 점에 유의하세요.
+
+#### Async atom과 함께 쓰는 `splitAtom` util (또는 다른 util)
+
+`splitAtom` util은 sync atom만 받습니다.
+따라서 전달하기 전에 async atom을 unwrap해야 합니다.
+
+이는 `jotai-tanstack-query`의 `atomsWithQuery` 같은 다른 util에도 적용됩니다.
+
+##### 이전 API
+
+```js
+const splittedAtom = splitAtom(asyncArrayAtom)
+```
+
+##### 새 API
+
+```js
+const splittedAtom = splitAtom(unwrap(asyncArrayAtom, () => []))
+```
+
+이 글을 쓰는 시점에서 `unwrap`은 아직 불안정하고 문서화되어 있지 않습니다.
+대신 `loadable`을 사용할 수 있는데, 이쪽이 로딩 상태를 더 세밀하게 제어할 수 있습니다.
+`<Suspense>`를 사용해야 한다면 atoms-in-atom 패턴이 도움이 될 것입니다.
+
+자세한 내용은 다음 토론을 참조하세요.
+
+- https://github.com/pmndrs/jotai/discussions/1615
+- https://github.com/jotaijs/jotai-tanstack-query/issues/21
+- https://github.com/pmndrs/jotai/discussions/1751
+
+### 기타 변경사항
+
+#### Utils
+
+- `atomWithStorage` util의 `delayInit`가 기본값으로 제거되었습니다. 또한 첫 번째 렌더링에서는 항상 `initialValue`를 렌더링하고 후속 렌더링에서는 저장된 값(있는 경우)을 렌더링합니다. 새로운 동작은 v1과 다릅니다. 자세한 내용은 https://github.com/pmndrs/jotai/discussions/1737를 참조하세요.
+- `useHydrateAtoms`는 writable atom만 받을 수 있습니다.
+
+#### Import statements
+
+v2 API는 라이브러리 작성자와 React 비사용자를 위해서도 대체 엔트리 포인트로 제공됩니다.
+
+- `jotai/vanilla`
+- `jotai/vanilla/utils`
+- `jotai/react`
+- `jotai/react/utils`
+
+```js
+// v1.11.0부터 사용 가능
+import { atom } from 'jotai/vanilla'
+import { useAtom } from 'jotai/react'
+
+// v2.0.0부터 사용 가능
+import { atom } from 'jotai' // is same as 'jotai/vanilla'
+import { useAtom } from 'jotai' // is same as 'jotai/react'
+```
+
+참고: ESM을 사용하지 않는다면, 더 나은 tree shaking을 위해 `jotai` 대신 `jotai/vanilla` 등을 사용하는 편이 좋습니다.

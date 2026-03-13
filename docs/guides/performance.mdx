@@ -1,0 +1,110 @@
+---
+title: 성능
+description: 불필요한 재렌더링을 줄이는 방법
+nav: 8.08
+keywords: performance
+---
+
+**참고**: 이 가이드는 아직 더 다듬을 여지가 있습니다. 지금은 참고용 문서로 봐 주세요.
+
+Jotai와 React는 앱 생명주기에서 발생하는 재렌더링을 관리할 수 있는 여러 도구를 제공합니다.
+먼저 [render와 commit의 차이](https://legacy.reactjs.org/blog/2018/09/10/introducing-the-react-profiler.html#browsing-commits)를 읽어 보시길 권합니다. 이 문서를 이해하는 것이 이후 내용을 따라가는 데 매우 중요하기 때문입니다.
+
+### 가벼운 렌더링
+
+[핵심 섹션](../core/atom.mdx)에서 볼 수 있듯이, React 18의 기본 동작 때문이기도 하고 전반적인 모범 사례이기도 해서, 컴포넌트 함수는 _idempotent_해야 합니다.
+컴포넌트 함수는 마운트 시점에도 렌더 단계에서 여러 번 호출될 수 있습니다. 따라서 렌더링은 어떤 경우에도 최대한 가볍게 유지해야 합니다.
+
+#### 무거운 계산
+
+무거운 계산은 항상 React 생명주기 밖에서 처리하세요. 예를 들면 action 안에서 처리하는 식입니다.
+
+하지 말아야 할 예:
+
+```js
+// 각 항목마다 무거운 계산을 수행
+const selector = (s) => s.filter(heavyComputation)
+const Profile = () => {
+  const [computed] = useAtom(selectAtom(friendsAtom, selector))
+}
+```
+
+권장되는 예:
+
+```js
+const friendsAtom = atom([])
+const fetchFriendsAtom = atom(null, async (get, set, payload) => {
+  // 친구 목록 전체를 가져옵니다
+  const res = await fetch('https://...')
+  // 무거운 계산은 한 번만 수행합니다
+  const computed = res.filter(heavyComputation)
+  set(friendsAtom, computed)
+})
+// 컴포넌트에서의 사용법
+const Profile = () => {
+  const [friends] = useAtom(friendsAtom)
+}
+```
+
+#### 작은 컴포넌트
+
+관찰 중인 atom은 업데이트가 필요한 앱의 작은 부분만 다시 렌더링하도록 하는 편이 좋습니다. React가 비교해야 할 범위가 줄어들수록 렌더링 시간도 짧아집니다.
+
+하지 말아야 할 예:
+
+```jsx
+const Profile = () => {
+  const [name] = useAtom(nameAtom)
+  const [age] = useAtom(ageAtom)
+  return (
+    <>
+      <div>{name}</div>
+      <div>{age}</div>
+    </>
+  )
+}
+```
+
+권장되는 예:
+
+```jsx
+const NameComponent = () => {
+  const [name] = useAtom(nameAtom)
+  return <div>{name}</div>
+}
+const AgeComponent = () => {
+  const [age] = useAtom(ageAtom)
+  return <div>{age}</div>
+}
+const Profile = () => {
+  return (
+    <>
+      <NameComponent />
+      <AgeComponent />
+    </>
+  )
+}
+```
+
+### 필요할 때만 렌더링
+
+대개 가장 큰 성능 오버헤드는, 다시 렌더링할 필요가 없는 부분이 렌더링되거나 필요한 범위보다 훨씬 넓은 부분이 다시 렌더링될 때 발생합니다.
+
+React에는 컴포넌트를 "언제" 렌더링해야 하는지를 다룰 수 있는 도구들이 있습니다. `useMemo`와 `useCallback`을 아직 잘 모른다면, 더 진행하기 전에 공식 React 문서를 먼저 읽어 보세요.
+앱이 부드럽게 동작하지 않을 때 불필요한 렌더링을 줄이는 데 매우 유용합니다.
+
+그리고 Jotai 역시 atom이 "언제" 재렌더링을 트리거해야 하는지를 다루는 도구들을 제공합니다.
+
+- 기본적으로 Jotai는 데이터를 atomic한 조각으로 나누는 방식을 권장합니다. 따라서 각 atom은 별도로 저장되고, 자기 자신의 값이 바뀔 때만 재렌더링을 트리거합니다.
+- `selectAtom`은 큰 객체의 특정 부분만 subscribe해서 그 값이 바뀔 때만 다시 렌더링할 수 있게 해 줍니다.
+- `focusAtom`은 `selectAtom`과 비슷하지만, 해당 부분을 위한 새 atom을 만들고 그 부분을 쉽게 업데이트할 수 있는 setter도 제공합니다.
+- `splitAtom`은 동적인 리스트에 대해 `selectAtom`/`focusAtom`과 비슷한 역할을 합니다.
+
+이 방식은 단순해 보이지만, 바로 그 단순함 덕분에 이해하고 추론하기도 쉽습니다. 그것이 목표였고, 빠르게 유지하려면 단순하게 유지하는 편이 좋습니다.
+
+#### 빈번하거나 드문 업데이트
+
+atom이 보통 자주 업데이트되는지, 아니면 드물게 업데이트되는지 먼저 생각해 보세요.
+예를 들어 거의 매초 바뀌는 객체를 담고 있는 atom이 있다고 해 봅시다. 이런 경우 `focusAtom`으로 그 객체의 특정 속성에 "초점"을 맞추는 것이 최선이 아닐 수 있습니다. 어차피 모두 같은 시점에 다시 렌더링될 가능성이 크기 때문에, 오버헤드를 늘리면서 atom을 더 만드는 것이 오히려 손해일 수 있습니다.
+
+반대로 객체 안에 거의 바뀌지 않는 속성이 있고, 무엇보다 다른 속성과 독립적으로 바뀌는 속성이 있다면 `focusAtom`이나 `selectAtom`을 사용해 불필요한 재렌더링을 줄일 수 있습니다.

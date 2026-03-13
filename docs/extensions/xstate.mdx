@@ -1,0 +1,140 @@
+---
+title: XState
+description: 이 문서에서는 XState 확장 프로그램에 대해 설명합니다.
+nav: 4.05
+keywords: xstate,machine,atomwithmachine
+---
+
+Jotai의 상태 관리는 원시적이고 유연하며,
+하지만 그것은 때때로 너무 자유롭다는 것을 의미합니다.
+XState는 다음을 제공하는 정교한 라이브러리입니다.
+상태 관리를 위한 더 좋고 안전한 추상화입니다.
+
+### 설치
+
+이 기능을 사용하려면 `xstate` 및 `jotai-xstate`를 설치해야 합니다.
+
+```
+npm install xstate jotai-xstate
+```
+
+## atomWithMachine
+
+`atomWithMachine`는 XState 기계를 사용하여 새로운 원자를 생성합니다.
+새로운 기계를 생성하는 기능 `getMachine`을 받습니다.
+`getMachine`는 `get` 인수와 함께 처음 사용할 때 호출됩니다.
+다른 원자 값을 읽을 수 있습니다.
+
+```tsx
+import { useAtom } from 'jotai'
+import { atomWithMachine } from 'jotai-xstate'
+import { assign, createMachine } from 'xstate'
+
+const createEditableMachine = (value: string) =>
+  createMachine<{ value: string }>({
+    id: 'editable',
+    initial: 'reading',
+    context: {
+      value,
+    },
+    states: {
+      reading: {
+        on: {
+          dblclick: 'editing',
+        },
+      },
+      editing: {
+        on: {
+          cancel: 'reading',
+          commit: {
+            target: 'reading',
+            actions: assign({
+              value: (_, { value }) => value,
+            }),
+          },
+        },
+      },
+    },
+  })
+
+const defaultTextAtom = atom('edit me')
+const editableMachineAtom = atomWithMachine((get) =>
+  // `get`는 기계 초기화에만 사용 가능
+  createEditableMachine(get(defaultTextAtom)),
+)
+
+const Toggle = () => {
+  const [state, send] = useAtom(editableMachineAtom)
+
+  return (
+    <div>
+      {state.matches('reading') && (
+        <strong onDoubleClick={send}>{state.context.value}</strong>
+      )}
+      {state.matches('editing') && (
+        <input
+          autoFocus
+          defaultValue={state.context.value}
+          onBlur={(e) => send({ type: 'commit', value: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              send({ type: 'commit', value: e.target.value })
+            }
+            if (e.key === 'Escape') {
+              send('cancel')
+            }
+          }}
+        />
+      )}
+      <br />
+      <br />
+      <div>
+        Double-click to edit. Blur the input or press <code>enter</code> to
+        commit. Press <code>esc</code> to cancel.
+      </div>
+    </div>
+  )
+}
+```
+
+### 전역 Provider(Provider-less 모드)에 저장된 다시 시작 가능한 머신
+
+머신이 최종 상태에 도달하면 더 이상 이벤트를 수신할 수 없습니다.
+atomWithMachine이 전역 저장소(즉, Provider-less 모드)에서 초기화된 경우
+다시 시작하려면 다음과 같이 `RESTART` 이벤트를 컴퓨터에 보내야 합니다.
+
+```tsx
+import { RESTART } from 'jotai-xstate'
+
+const YourComponent = () => {
+  const [current, send] = useAtom(yourMachineAtom)
+
+  const isFinalState = current.matches('myFinalState')
+
+  useEffect(() => {
+    // 구성요소 마운트 해제 시 전역적으로 초기화된 시스템 다시 시작
+    return () => {
+      if (isFinalState) send(RESTART)
+    }
+  }, [isFinalState])
+}
+```
+
+### 예제
+
+atomWithMachine으로 예제를 확인하세요:
+
+<Stackblitz id="vitejs-vite-oqfhy4" file="src%2FApp.tsx" />
+
+재시작 가능한 머신:
+
+<Stackblitz id="vitejs-vite-tqdtym" file="src%2FApp.tsx" />
+
+### 튜토리얼
+
+Jotai 및 XState에 대한 강좌를 확인해 보세요.
+
+[Jotai 및 XState를 사용한 React의 복잡한 상태 관리](https://egghead.io/courses/complex-state-management-in-react-with-jotai-and-xstate-3be0a740)
+
+(참고: 강좌에서는 `jotai-xstate`로 대체되는 `jotai/xstate`를 사용합니다.)
+

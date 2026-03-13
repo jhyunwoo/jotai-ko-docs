@@ -1,0 +1,255 @@
+---
+title: URQL
+description: 이 문서에서는 URQL 확장에 대해 설명합니다.
+nav: 4.03
+keywords: urql
+---
+
+[urql](https://formidable.com/open-source/urql/)는 GraphQL 쿼리, 캐싱 및 상태 관리를 위한 툴킷을 제공합니다.
+
+[개요 문서](https://formidable.com/open-source/urql/docs/)에서:
+
+> urql는 사용자 정의가 가능하고 다재다능한 GraphQL 클라이언트로 성장에 따라 정규화된 캐싱과 같은 기능을 추가할 수 있습니다. GraphQL 신규 사용자가 사용하기 쉽고, 확장 가능하여 동적 단일 앱 애플리케이션과 고도로 맞춤화된 GraphQL 인프라를 지원하도록 구축되었습니다. 즉, urql는 유용성과 적응성을 우선시합니다.
+
+[jotai-urql](https://github.com/jotaijs/jotai-urql)는 URQL용 Jotai 확장 라이브러리입니다. URQL의 GraphQL 기능을 하나의 일관된 인터페이스로 묶어 주므로, 기존 Jotai 상태와 함께 자연스럽게 활용할 수 있습니다.
+
+### 설치
+
+확장 프로그램을 사용하려면 `jotai-urql`, `@urql/core`, `wonka`를 설치해야 합니다.
+
+```
+npm install jotai-urql @urql/core wonka
+```
+
+### 내보낸 함수
+
+- [client.query](https://formidable.com/open-source/urql/docs/api/core/#clientquery)의 경우 `atomWithQuery`
+- [client.mutation](https://formidable.com/open-source/urql/docs/api/core/#clientmutation)의 경우 `atomWithMutation`
+- [client.subscription](https://formidable.com/open-source/urql/docs/api/core/#clientsubscription)의 경우 `atomWithSubscription`
+
+### 기본 사용법
+
+#### Query:
+
+```tsx
+import { useAtom } from 'jotai'
+
+const countQueryAtom = atomWithQuery<{ count: number }>({
+  query: 'query Count { count }',
+  getClient: () => client, // `useHydrateAtoms([[clientAtom, client]])`를 전역적으로 사용한다면 이 옵션은 생략할 수 있습니다.
+})
+
+const Counter = () => {
+  // 첫 번째 operation result가 resolve될 때까지 suspend됩니다. error, partial data, data가 올 수 있습니다.
+  const [operationResult, reexecute] = useAtom(countQueryAtom)
+
+  if (operationResult.error) {
+    // 이는 위의 부모 ErrorBoundary에서 처리됩니다.
+    throw operationResult.error
+  }
+
+  // 이 시점에서는 data가 정의되지 않았을 수 있으므로, 여기서는 optional chaining을 사용해야 합니다(오류가 발생한 경우에만).
+  return <>{operationResult.data?.count}</>
+}
+```
+
+#### Mutation:
+
+```tsx
+import { useAtom } from 'jotai'
+
+const incrementMutationAtom = atomWithMutation<{ increment: number }>({
+  query: 'mutation Increment { increment }',
+})
+
+const Counter = () => {
+  const [operationResult, executeMutation] = useAtom(incrementMutationAtom)
+  return (
+    <div>
+      <button
+        onClick={() =>
+          executeMutation().then((it) => console.log(it.data?.increment))
+        }
+      >
+        Increment
+      </button>
+      <div>{operationResult.data?.increment}</div>
+    </div>
+  )
+}
+```
+
+### 함수에 전달되는 단순화된 타입 옵션
+
+```tsx
+type AtomWithQueryOptions<
+  Data = unknown,
+  Variables extends AnyVariables = AnyVariables,
+> = {
+  // string query, typed-document-node, document node 등을 지원합니다.
+  query: DocumentInput<Data, Variables>
+  // plain/typed document node 타입에 따라 동적으로 적용됩니다.
+  getVariables?: (get: Getter) => Variables
+  getContext?: (get: Getter) => Partial<OperationContext>
+  getPause?: (get: Getter) => boolean
+  getClient?: (get: Getter) => Client
+}
+
+type AtomWithMutationOptions<
+  Data = unknown,
+  Variables extends AnyVariables = AnyVariables,
+> = {
+  query: DocumentInput<Data, Variables>
+  getClient?: (get: Getter) => Client
+}
+
+// 구독 유형은 AtomWithQueryOptions와 동일합니다.
+```
+
+### 서스펜스 비활성화
+
+더 안정적인 것으로 검증된 `import { loadable } from "jotai/utils"`를 대신 사용하는 편이 권장됩니다.
+그래도 Suspense를 비활성화하고 싶다면 다음과 같이 할 수 있습니다.
+
+```tsx
+import { suspenseAtom } from 'jotai-urql'
+
+export const App = () => {
+  // 전체 앱에 대해 서스펜스를 비활성화합니다.
+  useHydrateAtoms([[suspenseAtom, false]])
+  return <Counter />
+}
+```
+
+### 유용한 도우미 후크
+
+아래의 헬퍼 훅은 드문 corner case를 처리하고, `@tanstack/react-query`와 비슷한 바인딩 사용감을 제공합니다.
+Promise reject가 발생했을 때 오류를 실제 오류로 취급하고, 대부분 가까운 ErrorBoundary에서 처리하는 기본 동작을 구현합니다.
+이 훅은 Suspense 버전에서만 유효합니다.
+
+#### useQueryAtomData
+
+resolve 이후의 `data`를 깔끔하게 반환하고, 오류 발생, 재실행, corner case를 모두 처리합니다.
+타입도 재정의되므로, 쿼리 자체의 반환 타입이 아닌 한 `data`는 `undefined`나 `null`이 되지 않습니다.
+
+```tsx
+import type { AnyVariables, OperationResult } from '@urql/core'
+import { useAtom } from 'jotai'
+import type { AtomWithQuery } from 'jotai-urql'
+
+export const useQueryAtomData = <
+  Data = unknown,
+  Variables extends AnyVariables = AnyVariables,
+>(
+  queryAtom: AtomWithQuery<Data, Variables>,
+) => {
+  const [opResult, dispatch] = useAtom(queryAtom)
+
+  if (opResult.error && opResult.stale) {
+    use(
+      // 여기서는 트리를 suspend합니다. 이 코드는 ErrorBoundary 재시도 로직에서
+      // refetch에 `network-only`를 사용할 때만 트리거됩니다. 이 경우 트리가 suspend되지 않아
+      // "throw - boundary에서 retry - throw - boundary에서 retry" 사이클이 발생할 수 있습니다.
+      // (Jotai URQL 바인딩에만 해당)
+      // eslint-disable-next-line promise/avoid-new
+      new Promise((resolve) => {
+        setTimeout(resolve, 10000) // 이 시간 동안 이 컴포넌트는 suspend 상태가 됩니다.
+        // 새로운 operation result가 도착하면 다시 렌더링됩니다.
+        // 10초 후에는 컴포넌트 자체를 다시 렌더링하고 필요하다면 다시 suspend를 시도합니다.
+      }),
+    )
+  }
+
+  if (opResult.error) {
+    throw opResult.error
+  }
+
+  if (!opResult.data) {
+    throw Error(
+      'Query data is undefined. Probably you paused the query? In that case use `useQueryAtom` instead.',
+    )
+  }
+  return [opResult.data, dispatch, opResult] as [
+    Exclude<typeof opResult.data, undefined>,
+    typeof dispatch,
+    typeof opResult,
+  ]
+}
+
+// Promise가 resolve되는 동안 Suspense 트리를 유지합니다. (향후 React 버전에서는 필요 없을 수 있습니다.)
+function use(promise: Promise<any> | any) {
+  if (promise.status === 'fulfilled') {
+    return promise.value
+  }
+  if (promise.status === 'rejected') {
+    throw promise.reason
+  } else if (promise.status === 'pending') {
+    throw promise
+  } else {
+    promise.status = 'pending'
+    // eslint-disable-next-line promise/catch-or-return
+    ;(promise as Promise<any>).then(
+      (result: any) => {
+        promise.status = 'fulfilled'
+        promise.value = result
+      },
+      (reason: any) => {
+        promise.status = 'rejected'
+        promise.reason = reason
+      },
+    )
+    throw promise
+  }
+}
+```
+
+#### 기본 데모
+
+<Stackblitz id="vitejs-vite-1nhtrj" file="src%2FApp.tsx" />
+
+### Atom 및 urql 공급자 모두에 대해 동일한 클라이언트 인스턴스 참조
+
+동일한 urqlClient 개체를 참조하려면 프로젝트의 루트를 `<Provider>`로 래핑하고 UrqlProvider에 제공한 것과 동일한 urqlClient 값으로 clientAtom을 초기화해야 합니다.
+
+이 단계가 없으면 `atomWithQuery`를 사용할 때마다 클라이언트를 지정하게 될 수 있습니다. 이제 선택적 `getClient` 매개변수를 무시하면 컨텍스트에서 클라이언트를 사용하게 됩니다.
+
+```jsx
+import { Suspense } from 'react'
+import { Provider } from 'jotai/react'
+import { useHydrateAtoms } from 'jotai/react/utils'
+import { clientAtom } from 'jotai-urql'
+
+import {
+  createClient,
+  cacheExchange,
+  fetchExchange,
+  Provider as UrqlProvider,
+} from 'urql'
+
+const urqlClient = createClient({
+  url: 'https://countries.trevorblades.com/',
+  exchanges: [cacheExchange, fetchExchange],
+  fetchOptions: () => {
+    return { headers: {} }
+  },
+})
+
+const HydrateAtoms = ({ children }) => {
+  useHydrateAtoms([[clientAtom, urqlClient]])
+  return children
+}
+
+export default function MyApp({ Component, pageProps }) {
+  return (
+    <UrqlProvider value={urqlClient}>
+      <Provider>
+        <HydrateAtoms>
+          <Suspense fallback="Loading...">
+            <Component {...pageProps} />
+          </Suspense>
+        </HydrateAtoms>
+      </Provider>
+    </UrqlProvider>
+  )
+}
+```

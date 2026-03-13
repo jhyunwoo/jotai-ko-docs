@@ -1,0 +1,161 @@
+---
+title: Scope
+description: 이 문서에서는 Scope 확장에 대해 설명합니다.
+nav: 4.08
+keywords: scope
+---
+
+React에서 Jotai의 사용법을 확장하는 몇 가지 라이브러리가 있습니다.
+
+## `jotai-scope`
+
+Jotai의 Provider를 사용하면 하위 트리 아래에서 Jotai store의 범위를 나눌 수 있지만,
+하위 트리 안에서 트리 바깥쪽 위에 있는 store를 사용할 수는 없습니다.
+
+이에 대한 우회 방법은 `useAtom`과 다른 훅들에서 `store` 옵션을 사용하는 것입니다.
+
+하지만 `store` 옵션을 일일이 지정하는 대신,
+`<ScopeProvider>`를 사용하면 상태를 공유하지 않으면서도 React 트리의 서로 다른 위치에서 _같은_ atom을 재사용할 수 있고,
+동시에 부모 store의 다른 atom들도 읽을 수 있습니다.
+
+### 설치
+
+```
+npm install jotai-scope
+```
+
+### Counter 예제
+
+```tsx
+import { atom, useAtom } from 'jotai'
+import { ScopeProvider } from 'jotai-scope'
+
+const countAtom = atom(0)
+
+function Counter() {
+  const [count, setCount] = useAtom(countAtom)
+  const [anotherCount, setAnotherCount] = useAtom(anotherCountAtom)
+  return (
+    <>
+      <div>
+        <span>count: {count}</span>
+        <button type="button" onClick={() => setCount((v) => v + 1)}>
+          increment
+        </button>
+      </div>
+      <div>
+        <span>another count: {anotherCount}</span>
+        <button type="button" onClick={() => setAnotherCount((v) => v + 1)}>
+          increment
+        </button>
+      </div>
+    </>
+  )
+}
+
+function App() {
+  return (
+    <div>
+      <Counter />
+      <ScopeProvider atoms={[countAtom]}>
+        <Counter />
+      </ScopeProvider>
+    </div>
+  )
+}
+```
+
+<Stackblitz id="vitejs-vite-ctcuhj" file="src%2FApp.tsx" />
+
+## `createIsolation`
+
+Jotai의 Provider와 `jotai-scope`의 scoped provider는
+둘 다 여전히 전역 context를 사용합니다.
+
+당신이 Jotai에 의존하는 라이브러리를 만들고 있고,
+그 라이브러리 사용자가 자신의 앱에서도 Jotai를 따로 쓸 수 있다면,
+양쪽이 같은 context를 공유하게 될 수 있습니다.
+이 경우 예상하지 못한 Jotai store를 가리키게 되어 문제가 될 수 있습니다.
+
+이런 context 충돌을 피하기 위해,
+`jotai-scope`는 `createIsolation`이라는 유틸리티 함수를 내보냅니다.
+
+```tsx
+import { createIsolation } from 'jotai-scope'
+
+const { Provider, useStore, useAtom, useAtomValue, useSetAtom } =
+  createIsolation()
+
+function Library() {
+  return (
+    <Provider>
+      <LibraryComponent />
+    </Provider>
+  )
+}
+```
+
+## `bunshi` (formerly `jotai-molecules`)
+
+Jotai atom은 재렌더링을 최적화하기 위한 기본적인 해법을 제공합니다.
+전역으로 정의된 atom은 다른 atom에 의존할 수 있지만,
+컴포넌트 트리 안의 props나 state에는 의존할 수 없습니다.
+물론 컴포넌트 트리 안에서 atom을 정의할 수도 있지만,
+그러면 그 atom을 어떤 방식으로든 전달해야 합니다.
+(예: [atoms-in-atom](../guides/atoms-in-atom.mdx))
+
+[bunshi](https://github.com/saasquatch/bunshi)는
+이런 사용 사례를 지원하기 위한 서드파티 라이브러리입니다.
+
+자세한 내용은 [Motivation](https://github.com/saasquatch/bunshi/tree/v1.1.1#motivation)을 참고하세요.
+
+### 설치
+
+```
+npm install bunshi
+```
+
+### Counter 예제
+
+```jsx
+import { atom, useAtom } from 'jotai'
+import { molecule, useMolecule, createScope, ScopeProvider } from 'bunshi/react'
+
+const InitialCountScope = createScope({ initialCount: 0 })
+const countMolecule = molecule((getMol, getScope) => {
+  const { initialCount } = getScope(InitialCountScope)
+  return atom(initialCount)
+})
+
+function Counter() {
+  const countAtom = useMolecule(countMolecule)
+  const [count, setCount] = useAtom(countAtom)
+  return (
+    <div>
+      {count} <button onClick={() => setCount((v) => v + 1)}>+1</button>
+    </div>
+  )
+}
+
+function App() {
+  return (
+    <div>
+      <h1>With initial value 1</h1>
+      <ScopeProvider scope={InitialCountScope} value={{ initialCount: 1 }}>
+        <Counter />
+        <Counter />
+      </ScopeProvider>
+      <h1>With initial value 2</h1>
+      <ScopeProvider scope={InitialCountScope} value={{ initialCount: 2 }}>
+        <Counter />
+        <Counter />
+      </ScopeProvider>
+      <h1>Default</h1>
+      <Counter />
+      <Counter />
+    </div>
+  )
+}
+```
+
+<Stackblitz id="vitejs-vite-8akpt6" file="src%2FApp.tsx" />

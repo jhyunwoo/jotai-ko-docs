@@ -1,0 +1,55 @@
+---
+title: Zustand
+description: 이 문서에서는 Zustand 확장에 대해 설명합니다.
+nav: 4.98
+keywords: zustand
+published: false
+---
+
+Jotai의 상태는 React 안에 존재하지만,
+때로는 React 바깥의 세계와 상호작용하는 것이 유용할 때도 있습니다.
+
+Zustand는 어떤 값을 보관하고
+Jotai의 atom과 동기화하는 데 사용할 수 있는 store 인터페이스를 제공합니다.
+
+이 기능은 zustand의 vanilla api만 사용합니다.
+
+### 설치
+
+이 기능을 사용하려면 `zustand` 및 `jotai-zustand`를 설치해야 합니다.
+
+```
+npm install zustand jotai-zustand
+```
+
+## atomWithStore
+
+`atomWithStore`는 zustand store를 사용하는 새 atom을 생성합니다.
+이는 양방향 바인딩이므로 양쪽에서 모두 값을 바꿀 수 있습니다.
+
+```jsx
+import { useAtom } from 'jotai'
+import { atomWithStore } from 'jotai-zustand'
+import create from 'zustand/vanilla'
+
+const store = create(() => ({ count: 0 }))
+const stateAtom = atomWithStore(store)
+const Counter = () => {
+  const [state, setState] = useAtom(stateAtom)
+
+  return (
+    <>
+      count: {state.count}
+      <button
+        onClick={() => setState((prev) => ({ ...prev, count: prev.count + 1 }))}
+      >
+        button
+      </button>
+    </>
+  )
+}
+```
+
+### 예제
+
+<Stackblitz id="vitejs-vite-kfzyun" file="src%2FApp.tsx" />

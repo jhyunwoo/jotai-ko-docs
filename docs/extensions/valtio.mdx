@@ -1,0 +1,124 @@
+---
+title: Valtio
+description: 이 문서에서는 Valtio 확장에 대해 설명합니다.
+nav: 4.98
+keywords: valtio,proxy
+published: false
+---
+
+Jotai의 상태는 React 안에 존재하지만,
+때로는 React 바깥의 세계와 상호작용하는 것이 유용할 때도 있습니다.
+
+Valtio는 어떤 값을 저장하고
+Jotai의 atom과 동기화하는 데 사용할 수 있는 proxy 인터페이스를 제공합니다.
+
+이 기능은 valtio의 vanilla api만 사용합니다.
+
+### 설치
+
+이 기능을 사용하려면 `valtio` 및 `jotai-valtio`를 설치해야 합니다.
+
+```
+npm install valtio jotai-valtio
+```
+
+## atomWithProxy
+
+`atomWithProxy`는 valtio proxy를 사용하는 새 atom을 생성합니다.
+이는 양방향 바인딩이므로 양쪽에서 모두 값을 바꿀 수 있습니다.
+
+```jsx
+import { useAtom } from 'jotai'
+import { atomWithProxy } from 'jotai-valtio'
+import { proxy } from 'valtio/vanilla'
+
+const proxyState = proxy({ count: 0 })
+const stateAtom = atomWithProxy(proxyState)
+const Counter = () => {
+  const [state, setState] = useAtom(stateAtom)
+
+  return (
+    <>
+      count: {state.count}
+      <button
+        onClick={() => setState((prev) => ({ ...prev, count: prev.count + 1 }))}
+      >
+        inc atom
+      </button>
+      <button
+        onClick={() => {
+          ++proxyState.count
+        }}
+      >
+        inc proxy
+      </button>
+    </>
+  )
+}
+```
+
+### 매개변수
+
+```
+atomWithProxy(proxyObject, options?)
+```
+
+**proxyObject** (필수): atom을 파생시키고 싶은 Valtio proxy 객체
+
+**options.sync** (선택 사항): [`valtio/useSnapshot`](https://github.com/pmndrs/valtio#update-synchronously)처럼, batched update를 기다리지 않고 atom이 동기적으로 업데이트되도록 만듭니다. 렌더링 횟수는 늘어나지만 다른 Jotai atom과의 동기화 보장은 더 강해집니다.
+
+```
+atomWithProxy(proxyObject, { sync: true })
+```
+
+### 예제
+
+<Stackblitz id="vitejs-vite-wmsazx" file="src%2FApp.tsx" />
+
+## mutableAtom
+
+`mutableAtom`은 값을 self-aware Valtio proxy로 감쌉니다. 일반적인 js 객체를 다루듯이 값을 변경할 수 있습니다.
+
+count 값은 `value` 속성 아래에 저장됩니다.
+
+```jsx
+const countProxyAtom = mutableAtom(0)
+
+function IncrementButton() {
+  const countProxy = useAtomValue(countProxyAtom)
+  return <button onClick={() => ++countProxy.value}>+</button>
+}
+```
+
+### 매개변수
+
+```js
+mutableAtom(value, options?)
+```
+
+**value** (필수): proxy로 감쌀 값입니다.
+
+**options.proxyFn** (선택 사항): 사용자 정의 proxy 함수를 위해 `proxyFn`으로 동작을 바꿀 수 있습니다. `proxy`(기본값) 또는 사용자 정의 함수를 사용할 수 있습니다.
+
+### 예제
+
+<Stackblitz id="vitejs-vite-wmsazx" file="src%2FApp.tsx" />
+
+### Proxy를 변경할 때의 주의점
+
+atom의 read 함수 안이나 렌더링 중에 proxy를 직접 변경하지 않도록 주의하세요. 그렇게 하면 무한 렌더링 루프가 발생할 수 있습니다.
+
+```ts
+const countProxyAtom = mutableAtom(0)
+
+atom(
+  (get) => {
+    const countProxy = get(countProxyAtom)
+    ++countProxy.value // This will cause an infinite loop
+  },
+  (get, set) => {
+    const countProxy = get(countProxyAtom)
+    ++countProxy.value // This is fine
+  },
+)
+```

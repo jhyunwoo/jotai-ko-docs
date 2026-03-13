@@ -1,0 +1,141 @@
+---
+title: Derive
+description: 이 문서에서는 Derive 확장을 설명합니다.
+nav: 5.01
+keywords: derive,derived,async,zalgo,suspense,promise,react
+---
+
+#### 언제 유용한가요?
+
+- 캐시에 대한 로컬 업데이트가 미세한 suspension을 일으킬 때
+- 불필요한 재계산 때문에 성능 문제가 생길 때
+
+Jotai는 웹 프레임워크(예: React) 바깥에서도 비동기 데이터를 다루기 위한 강력한 기본 요소를 제공하며, UI와 비즈니스 로직이 데이터 계층과 자연스럽게 통합되도록 해줍니다. 많은 데이터 패칭 통합은 atom을 통해 클라이언트 측 캐시를 들여다볼 수 있게 해줍니다. 캐시가 아직 채워지지 않았다면 atom은 값의 Promise를 반환해야 합니다. 하지만 값이 이미 캐시에 있고 낙관적 업데이트를 수행한다면, 그 값은 즉시 downstream에서 사용할 수 있습니다.
+
+이처럼 이중적인 성격(어떤 때는 비동기, 어떤 때는 동기)을 가진 atom을 바탕으로 데이터 그래프를 구성하면, 주의하지 않을 경우 불필요한 리렌더링, 오래된 값, 그리고 React에서의 미세한 suspension이 발생할 수 있습니다.
+
+**jotai-derive**는 값이 준비되는 즉시 그 값을 사용해 동작하는 비동기 데이터 그래프를 만들기 위한 기본 요소를 제공합니다. 즉, 필요할 때만 기다리고, 가능하면 동기적으로 처리합니다.
+
+### 설치
+
+이 기능을 사용하려면 `jotai-derive`를 설치해야 합니다.
+
+```
+npm install jotai-derive
+```
+
+## derive
+
+예를 들어 _이중 성격_ 의 atom이 있다고 가정해 보겠습니다. 어떤 경우에는 아직 값을 알 수 없어서(예: 데이터를 가져오는 중) 기다려야 하지만, 다른 경우에는 atom을 로컬에서 갱신하므로 즉시 값을 알 수 있습니다(예: 낙관적 업데이트).
+
+```ts
+// `jotai-derive`는 `jotai-apollo`뿐 아니라 대부분의 데이터 패칭 솔루션에 적용할 수 있습니다.
+import { atomWithQuery } from 'jotai-apollo';
+
+// 이중 성격의 atom 예시
+const userAtom: Atom<User | Promise<User>> =
+  atomWithQuery(...);
+
+```
+
+보통 파생 atom은 아래처럼 만듭니다. 하지만 이 방식의 단점은 값이 이미 알려져 있어도 항상 기다린다는 점입니다.
+그 결과 불필요한 지연과 재계산이 생깁니다.
+
+```ts
+// `jotai-derive` 없이
+
+import { atom } from 'jotai'
+
+// 타입은 Atom<Promise<string>>입니다.
+// 하지만 get(userAtom)은 항상 Promise를 반환하는 것이 아니므로,
+// `uppercaseNameAtom`은 동기적으로 계산할 수도 있습니다.
+const uppercaseNameAtom = atom(async (get) => {
+  const user = await get(userAtom)
+  return user.name.toUppercase()
+})
+```
+
+아래는 `jotai-derive`를 사용해 더 촘촘한 비동기 데이터 처리 파이프라인을 만드는 방법입니다.
+
+```ts
+// `jotai-derive` 사용
+
+import { derive } from 'jotai-derive'
+
+// Atom<string | Promise<string>>
+const uppercaseNameAtom = derive(
+  [userAtom], // 필요할 때만 await 합니다.
+  (user) => user.name.toUppercase(),
+)
+```
+
+### 여러 비동기 의존성
+
+여러 atom에서 값을 파생하려면 배열에 두 개 이상의 atom을 넣으면 됩니다.
+그 값들은 같은 순서대로 producer 함수에 전달됩니다.
+
+```ts
+import { derive } from 'jotai-derive'
+
+// Atom<string | Promise<string>>
+const welcomeMessageAtom = derive(
+  [userAtom, serverNameAtom],
+  (user, serverName) => `Welcome ${user.name} to ${serverName}!`,
+)
+```
+
+## soon
+
+예를 들어 **조건부 의존성** 같은 더 고급 사용 사례에서는 `soon`과 `soonAll` 함수를 대신 사용할 수 있습니다. (`derive`는 이 함수들을 감싼 유틸리티 래퍼입니다.)
+
+### 조건부 의존성
+
+```ts
+// pipe를 사용하면 `soon`을 직접 쓸 때 코드를 더 깔끔하게 만들 수 있습니다.
+import { pipe } from 'remeda';
+import { soon } from 'jotai-derive';
+
+// Atom<RestrictedItem | Promise<RestrictedItem>>
+const queryAtom = ...;
+
+// Atom<boolean | Promise<boolean>>
+const isAdminAtom = ...;
+
+// Atom<null | RestrictedItem | Promise<null | RestrictedItem>>
+const restrictedItemAtom = atom((get) =>
+  pipe(
+    get(isAdminAtom),
+    soon((isAdmin) => (isAdmin ? get(queryAtom) : null))
+  )
+);
+```
+
+### 조건부 의존성(여러 조건)
+
+```ts
+// pipe를 사용하면 `soon`을 직접 쓸 때 코드를 더 깔끔하게 만들 수 있습니다.
+import { pipe } from 'remeda';
+import { soon, soonAll } from 'jotai-derive';
+
+// Atom<RestrictedItem | Promise<RestrictedItem>>
+const queryAtom = ...;
+
+// Atom<boolean | Promise<boolean>>
+const isAdminAtom = ...;
+
+// Atom<boolean | Promise<boolean>>
+const enabledAtom = ...;
+
+// Atom<null | RestrictedItem | Promise<null | RestrictedItem>>
+const restrictedItemAtom = atom((get) =>
+  pipe(
+    soonAll(get(isAdminAtom), get(enabledAtom)),
+    soon(([isAdmin, enabled]) => (isAdmin && enabled ? get(queryAtom) : null))
+  )
+);
+
+```
+
+## 데모
+
+<CodeSandbox id="jotai-derive-example-7422pk" />

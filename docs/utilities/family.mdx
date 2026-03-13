@@ -1,0 +1,213 @@
+---
+title: Family
+nav: 3.5
+keywords: family
+---
+
+## atomFamily
+
+:::주의 더 이상 사용되지 않음
+`atomFamily`는 더 이상 사용되지 않으며 Jotai v3에서 제거될 예정입니다.
+
+`atomTree`와 같은 추가 기능과 함께 동일한 API를 제공하는 [`jotai-family`](https://github.com/jotaijs/jotai-family) 패키지로 이전하세요.
+
+**이주:**
+
+```bash
+npm install jotai-family
+```
+
+```ts
+// 전에
+import { atomFamily } from 'jotai/utils'
+
+// 후에
+import { atomFamily } from 'jotai-family'
+```
+
+API는 동일하므로 import 문 외에는 코드 변경이 필요하지 않습니다.
+:::
+
+참조: https://github.com/pmndrs/jotai/issues/23
+
+### 사용법
+
+```js
+atomFamily(initializeAtom, areEqual): (param) => Atom
+```
+
+그러면 `param`을 취하고 원자를 반환하는 함수가 생성됩니다.
+Atom이 이미 생성된 경우 캐시에서 반환됩니다.
+`initializeAtom`는 모든 종류의 원자(`atom()`, `atomWithDefault()`, ...)를 반환할 수 있는 함수입니다.
+`areEqual` 인수는 선택 사항이며 비교합니다.
+두 매개변수가 동일한 경우(기본값은 `Object.is`).
+
+[Recoil의atomFamily/selectorFamily](https://recoiljs.org/docs/api-reference/utils/atomFamily)와 유사한 동작을 재현하려면,
+deepEqual 함수를 `areEqual`로 지정합니다. 예를 들어:
+
+```js
+import { atom } from 'jotai'
+import { atomFamily } from 'jotai/utils'
+import deepEqual from 'fast-deep-equal'
+
+const fooFamily = atomFamily((param) => atom(param), deepEqual)
+```
+
+### TypeScript
+
+Atom 계열 유형은 초기화Atom에서 추론됩니다. 다음은 원시 원자의 일반적인 사용법입니다.
+
+```ts
+import type { PrimitiveAtom } from 'jotai'
+
+/**
+ * 여기서 원자(id)는 PrimitiveAtom<number>을 반환합니다.
+ * PrimitiveAtom<number>은 WritableAtom<number, SetStateAction<number>>입니다.
+ */
+const myFamily = atomFamily((id: number) => atom(id))
+```
+
+TypeScript 제네릭을 사용하여 매개변수 유형과 원자 유형을 명시적으로 선언할 수 있습니다.
+
+```ts
+atomFamily<Param, AtomType extends Atom<unknown>>(
+  initializeAtom: (param: Param) => AtomType,
+  areEqual?: (a: Param, b: Param) => boolean
+): AtomFamily<Param, AtomType>
+```
+
+명시적 유형의 예:
+
+```ts
+import { atom } from 'jotai'
+import type { PrimitiveAtom } from 'jotai'
+import { atomFamily } from 'jotai/utils'
+
+const myFamily = atomFamily<number, PrimitiveAtom<number>>((id: number) =>
+  atom(id),
+)
+```
+
+### API 메소드
+
+`atomFamily` 함수는 다음 메서드를 사용하여 객체를 반환합니다.
+
+#### `myFamily(param)`
+
+주어진 매개변수에 대한 원자를 반환합니다. Atom이 이미 생성된 경우 캐시에서 반환됩니다.
+
+#### `myFamily.getParams()`
+
+현재 캐시에 있는 모든 매개변수의 반복 가능 항목을 반환합니다.
+
+```js
+const todoFamily = atomFamily((name) => atom(name))
+
+todoFamily('foo')
+todoFamily('bar')
+
+for (const param of todoFamily.getParams()) {
+  console.log(param) // 'foo', 'bar'
+}
+```
+
+#### `myFamily.remove(param)`
+
+캐시에서 특정 매개변수를 제거합니다.
+
+```js
+todoFamily.remove('foo')
+```
+
+#### `myFamily.setShouldRemove(shouldRemove)`
+
+캐시에서 원자를 가져오려고 할 때 **즉시** 실행되는 `shouldRemove` 함수를 등록합니다.
+
+- `shouldRemove`는 `createdAt`(밀리초 단위) 및 `param`라는 두 개의 인수를 사용하고 부울 값을 반환하는 함수입니다.
+- `null`로 설정하면 이전에 등록된 기능이 제거됩니다.
+
+```js
+// 1시간보다 오래된 원자 제거
+todoFamily.setShouldRemove((createdAt, param) => {
+  return Date.now() - createdAt > 60 * 60 * 1000
+})
+```
+
+#### `myFamily.unstable_listen(callback)`
+
+**⚠️ 불안정한 API**: 이 API는 고급 사용 사례를 위한 것이며 예고 없이 변경될 수 있습니다.
+
+원자가 생성되거나 제거될 때 발생합니다. 정리 함수를 반환합니다.
+
+```js
+const cleanup = todoFamily.unstable_listen((event) => {
+  console.log(event.type) // 'CREATE' or 'REMOVE'
+  console.log(event.param) // 매개변수
+  console.log(event.atom) // 원자
+})
+
+// later stop listening.
+cleanup()
+```
+
+### 주의 사항: 메모리 누수
+
+내부적으로,atomFamily는 키가 매개변수이고 값이 원자 구성인 Map입니다.
+사용하지 않는 매개변수를 명시적으로 제거하지 않으면 메모리 누수가 발생합니다.
+무한한 수의 매개변수를 사용하는 경우 이는 매우 중요합니다.
+
+메모리를 관리하려면 `myFamily.remove(param)` 또는 `myFamily.setShouldRemove(shouldRemove)`를 사용하세요.
+
+### 예제
+
+```js
+import { atom } from 'jotai'
+import { atomFamily } from 'jotai/utils'
+
+const todoFamily = atomFamily((name) => atom(name))
+
+todoFamily('foo')
+// 그러면 새 원자('foo')가 생성되거나 이미 생성된 경우 해당 원자가 반환됩니다.
+```
+
+```js
+import { atom } from 'jotai'
+import { atomFamily } from 'jotai/utils'
+
+const todoFamily = atomFamily((name) =>
+  atom(
+    (get) => get(todosAtom)[name],
+    (get, set, arg) => {
+      const prev = get(todosAtom)
+      set(todosAtom, { ...prev, [name]: { ...prev[name], ...arg } })
+    },
+  ),
+)
+```
+
+```js
+import { atom } from 'jotai'
+import { atomFamily } from 'jotai/utils'
+
+const todoFamily = atomFamily(
+  ({ id, name }) => atom({ name }),
+  (a, b) => a.id === b.id,
+)
+```
+
+### Stackblitz
+
+<Stackblitz id="vitejs-vite-rx6npn" file="src%2FApp.tsx" />
+
+---
+
+## jotai-family로 마이그레이션
+
+새 프로젝트의 경우 또는 기존 코드를 업데이트하는 경우 대신 [`jotai-family`](https://github.com/jotaijs/jotai-family) 패키지를 사용하는 것이 좋습니다. 다음을 제공합니다:
+
+- **동일한 API**: `atomFamily`에 대한 즉시 교체
+- **추가 기능**: 계층적 원자 관리를 위한 `atomTree` 포함
+- **더 나은 유지 관리**: 집중 개발이 포함된 전용 패키지
+- **미래 보장**: Jotai v3 이상에서도 계속 지원됩니다.
+
+자세한 내용은 [jotai-family 문서](https://github.com/jotaijs/jotai-family#readme)를 참조하세요.

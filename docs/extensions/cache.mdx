@@ -1,0 +1,120 @@
+---
+title: Cache
+description: 이 문서에서는 캐시 확장에 대해 설명합니다.
+nav: 4.07
+keywords: cache
+---
+
+Jotai는 다시 렌더링을 최적화하는 기본 기능을 제공합니다.
+"현재" 원자 값만 보유하도록 설계되었습니다.
+이전 값을 캐시하지 않습니다.
+
+캐싱은 때때로 유용합니다. 예를 들어, 비동기 원자의 경우
+네트워크 요청을 트리거하면 응답을 캐시할 수 있습니다.
+
+[jotai-cache](https://github.com/jotai-labs/jotai-cache)는
+이러한 사용 사례를 지원하는 타사 라이브러리.
+
+### 설치
+
+```
+npm install jotai-cache
+```
+
+## atomWithCache
+
+```js
+atomWithCache(read, options): Atom
+```
+
+`atomWithCache`는 캐시를 사용하는 새로운 읽기 전용 atom을 생성합니다.
+
+### 매개변수
+
+**read**: 읽기 전용 원자를 정의하는 읽기 함수입니다.
+
+**options** (선택 사항): atom의 동작을 맞춤 설정하는 옵션 객체
+
+### 옵션
+
+**size** (선택 사항): 캐시 항목의 최대 크기입니다.
+
+**shouldRemove** (선택 사항): 캐시 항목을 제거해야 하는지 확인하는 기능입니다.
+
+**areEqual** (선택 사항): 원자 값을 비교하는 함수입니다.
+
+### 예제
+
+```jsx
+import { atom, useAtom } from 'jotai'
+import { atomWithCache } from 'jotai-cache'
+
+const idAtom = atom(1)
+
+const normalAtom = atom(async (get) => {
+  const id = get(idAtom)
+  const response = await fetch(`https://reqres.in/api/users/${id}?delay=1`)
+  return response.json()
+})
+
+const cachedAtom = atomWithCache(async (get) => {
+  const id = get(idAtom)
+  const response = await fetch(`https://reqres.in/api/users/${id}?delay=1`)
+  return response.json()
+})
+
+const NormalUser = () => {
+  const [{ data }] = useAtom(normalAtom)
+  return (
+    <div>
+      <h1>User (normal atom)</h1>
+      <ul>
+        <li>ID: {data.id}</li>
+        <li>First name: {data.first_name}</li>
+        <li>Last name: {data.last_name}</li>
+      </ul>
+    </div>
+  )
+}
+
+const CachedUser = () => {
+  const [{ data }] = useAtom(cachedAtom)
+  return (
+    <div>
+      <h1>User (cached atom)</h1>
+      <ul>
+        <li>ID: {data.id}</li>
+        <li>First name: {data.first_name}</li>
+        <li>Last name: {data.last_name}</li>
+      </ul>
+    </div>
+  )
+}
+
+const App = () => {
+  const [id, setId] = useAtom(idAtom)
+  return (
+    <div>
+      ID: {id}{' '}
+      <button type="button" onClick={() => setId((c) => c - 1)}>
+        Prev
+      </button>{' '}
+      <button type="button" onClick={() => setId((c) => c + 1)}>
+        Next
+      </button>
+      <hr />
+      <Suspense fallback="Loading...">
+        <CachedUser />
+      </Suspense>
+      <hr />
+      <Suspense fallback="Loading...">
+        <NormalUser />
+      </Suspense>
+    </div>
+  )
+}
+```
+
+### Stackblitz
+
+<Stackblitz id="vitejs-vite-p86ajq" file="src%2FApp.tsx" />

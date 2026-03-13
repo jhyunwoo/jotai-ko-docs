@@ -1,0 +1,97 @@
+---
+title: Lazy
+nav: 3.03
+keywords: lazy,initialize,init,loading
+---
+
+기본 원자를 정의할 때 초기 값은 정의 시 바인딩되어야 합니다.
+초기 값을 생성하는 데 계산 비용이 많이 들거나 정의 중에 값에 액세스할 수 없는 경우
+[store에서 처음 사용](#using-multiple-stores)이 될 때까지 원자 초기화를 연기하는 것이 가장 좋습니다.
+
+```jsx
+const imageDataAtom = atom(initializeExpensiveImage()) // 1) 여기서 계산해야합니다
+
+function Home() {
+  ...
+}
+
+function ImageEditor() {
+  // 2) 이 경로에서만 사용됨
+  const [imageData, setImageData] = useAtom(imageDataAtom);
+  ...
+}
+
+function App() {
+  return (
+    <Router>
+      <Route path="/" component={Home} />
+      <Route path="/edit" component={ImageEditor} />
+    </Router>
+  )
+}
+```
+
+## atomWithLazy
+
+참조: https://github.com/pmndrs/jotai/pull/2465
+
+`atomWithLazy`를 사용하여 초기 값이 [store에서 처음 사용](#using-multiple-stores)에서 계산되는 기본 원자를 만들 수 있습니다.
+초기화 후에는 일반 기본 원자처럼 동작합니다(쓰기 가능).
+
+### 사용법
+
+```jsx
+import { atomWithLazy } from 'jotai/utils'
+
+// 초기화 함수 전달
+const imageDataAtom = atomWithLazy(initializeExpensiveImage)
+
+function Home() {
+  ...
+}
+
+function ImageEditor() {
+  // 사용자가 `/edit`로 이동하는 경우에만 초기화됩니다.
+  const [imageData, setImageData] = useAtom(imageDataAtom);
+  ...
+}
+
+function App() {
+  return (
+    <Router>
+      <Route path="/" component={Home} />
+      <Route path="/edit" component={ImageEditor} />
+    </Router>
+  )
+}
+```
+
+### 여러 store 이용하기
+
+각 스토어는 별도의 유니버스이므로 초기 값은 스토어당 정확히 한 번씩 다시 생성됩니다(스토어를 더 작은 유니버스로 분할하는 `jotai-scope`와 같은 것을 사용하지 않는 한).
+
+```ts
+type RGB = [number, number, number];
+
+function randomRGB(): RGB {
+  ...
+}
+
+const lift = (value: number) => ([r, g, b]: RGB) => {
+  return [r + value, g + value, b + value]
+}
+
+const colorAtom = lazyAtom(randomRGB)
+
+let store = createStore()
+
+console.log(store.get(colorAtom)) // [0, 36, 128]
+store.set(colorAtom, lift(8))
+console.log(store.get(colorAtom)) // [8, 44, 136]
+
+// 스토어 다시 만들기, 때로는 로그아웃하거나 어떤 방식으로든 앱을 재설정할 때 수행됨
+store = createStore()
+
+console.log(store.get(colorAtom)) // [255, 12, 46] -- 새로운 임의 색상
+```
+

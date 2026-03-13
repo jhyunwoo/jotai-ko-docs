@@ -1,0 +1,132 @@
+---
+title: 비동기
+description: 이 문서에서는 비동기 동작에 대해 설명합니다.
+nav: 8.99
+keywords: async
+published: false
+---
+
+비동기 Atom을 사용하면 Atom에서 직접 데이터를 매우 쉽게 관리하면서 실제 데이터에 액세스할 수 있습니다.
+
+우리는 이를 두 가지 주요 범주로 구분할 수 있습니다.
+
+- 비동기 읽기 원자: 비동기 요청은 값을 가져오자마자 즉시 시작됩니다. 당신은 그들을 "똑똑한 게터"라고 생각할 수 있습니다.
+- 비동기 쓰기 원자: 비동기 요청이 특정 순간에 시작됩니다. 당신은 그것들을 "행동"으로 연관시킬 수 있습니다.
+
+## 비동기 읽기 원자
+
+Atom의 `read` 함수는 Promise를 반환할 수 있습니다.
+
+```js
+const countAtom = atom(1)
+const asyncAtom = atom(async (get) => get(countAtom) * 2)
+```
+
+Jotai는 본질적으로 `Suspense`를 활용하여 비동기 흐름을 처리합니다.
+
+```jsx
+const ComponentUsingAsyncAtoms = () => {
+  const [num] = useAtom(asyncAtom)
+  // 여기서 `num`는 asyncAtom이 Promise를 반환하더라도 항상 `number`입니다.
+}
+const App = () => {
+  return (
+    <Suspense fallback={/* What to show while suspended */}>
+      <ComponentUsingAsyncAtoms />
+    </Suspense>
+  )
+}
+```
+
+또는 원자를 [`loadable` API](../utilities/async.mdx)로 감싸면 Jotai이 발생하는 고유한 정지 현상을 피할 수 있습니다.
+
+다른 Atom이 비동기 Atom을 사용하면 Promise를 반환합니다. 따라서 원자도 비동기화해야 합니다.
+
+```js
+const anotherAtom = atom(async (get) => (await get(asyncAtom)) / 2)
+```
+
+이는 쓰기 기능이 있는 원자에도 적용됩니다.
+
+```js
+const asyncAtom = atom(async (get) => ...)
+const writeAtom = atom(null, async (get, set, payload) => {
+  await get(asyncAtom)
+  // ...
+})
+```
+
+## 비동기 쓰기 원자
+
+비동기 쓰기 원자는 또 다른 종류의 비동기 원자입니다. Atom의 `write` 함수가 Promise를 반환하는 경우.
+
+```js
+const countAtom = atom(1)
+const asyncIncrementAtom = atom(null, async (get, set) => {
+  // 뭔가를 기다리다
+  set(countAtom, get(countAtom) + 1)
+})
+
+const Component = () => {
+  const [, increment] = useAtom(asyncIncrementAtom)
+  const handleClick = () => {
+    increment()
+  }
+  // ...
+}
+```
+
+## 때때로 비동기
+
+Jotai로 달성할 수 있는 흥미로운 패턴은 비동기에서 동기화로 전환하여 원할 때 일시 중단을 트리거하는 것입니다.
+
+```js
+const request = async () => fetch('https://...').then((res) => res.json())
+const baseAtom = atom(0)
+const Component = () => {
+  const [value, setValue] = useAtom(baseAtom)
+  const handleClick = () => {
+    setValue(request()) // 요청이 해결될 때까지 일시중지됩니다.
+  }
+  // ...
+}
+```
+
+### TypeScript에서의 사용법
+
+TypeScript에서는 `atom(0)`가 `PrimitiveAtom<number>`로 추론됩니다. `Promise<number>`를 값으로 허용할 수 없으므로 이전 코드는 유형 검사를 수행하지 않습니다. 이를 수용하려면 원자를 명시적으로 입력하고 허용되는 값으로 `Promise<number>`를 추가해야 합니다.
+
+```ts
+const baseAtom = atom<number | Promise<number>>(0) // 동기화 및 비동기 값을 허용합니다.
+```
+
+## 영원히 비동기화
+
+때로는 미리 결정되지 않은 순간까지 (또는 전혀) 일시 중지하고 싶을 수도 있습니다.
+
+```js
+const baseAtom = atom(new Promise(() => {})) // 달리 설정될 때까지 정지됩니다.
+```
+
+## Suspense
+
+비동기 지원은 Jotai에서 최고 수준입니다. React 서스펜스를 핵심으로 최대한 활용합니다.
+
+> 기술적으로 React.lazy 이외의 Suspense 사용은 React 17에서 아직 지원되지 않거나 문서화되지 않았습니다. 이것이 차단되는 경우에도 [`loadable` API](../utilities/async.mdx)를 사용하여 일시중지를 방지할 수 있습니다.
+
+비동기 Atom을 사용하려면 구성 요소 트리를 `<Suspense>`로 래핑해야 합니다.
+
+> `<Provider>`이 있는 경우 **적어도 하나** `<Suspense>`를 `<Provider>` 안에 넣으세요. 그렇지 않으면 구성 요소를 렌더링하는 동안 무한 루프가 발생할 수 있습니다.
+
+```jsx
+const App = () => (
+  <Provider>
+    <Suspense fallback="Loading...">
+      <Layout />
+    </Suspense>
+  </Provider>
+)
+```
+
+컴포넌트 트리에 더 많은 `<Suspense>`을 갖는 것도 가능하며 기껏해야 Jotai 고유 처리에서 이익을 얻는 것으로 간주되어야 합니다.
+

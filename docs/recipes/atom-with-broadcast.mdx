@@ -1,0 +1,74 @@
+---
+title: atomWithBroadcast
+nav: 9.09
+keywords: creators,broadcast
+---
+
+> `atomWithBroadcast` 원자를 생성합니다. 원자는 다음과 같이 공유됩니다.
+> 브라우저 탭 및 프레임, `atomWithStorage`와 유사하지만
+> 초기화 제한.
+
+이는 localStorage를 사용하지 않고도 상태가 서로 상호 작용하도록 하려는 경우 유용할 수 있습니다.
+BroadcastChannel API를 사용하면 창, 탭, 프레임, 구성 요소 또는 iframe과 같은 탐색 컨텍스트와 동일한 출처의 작업자 간의 기본 통신을 활성화할 수 있습니다.MDN 문서에 따르면 초기화 중 메시지 수신은 BroadcastChannel에서 지원되지 않지만 해당 기능을 지원하려면atomWithBroadcast에 로컬 저장소와 같은 추가 옵션을 추가해야 할 수도 있습니다.
+
+```tsx
+import { atom, SetStateAction } from 'jotai'
+
+export function atomWithBroadcast<Value>(key: string, initialValue: Value) {
+  const baseAtom = atom(initialValue)
+  const listeners = new Set<(event: MessageEvent<any>) => void>()
+  const channel = new BroadcastChannel(key)
+
+  channel.onmessage = (event) => {
+    listeners.forEach((l) => l(event))
+  }
+
+  const broadcastAtom = atom(
+    (get) => get(baseAtom),
+    (get, set, update: { isEvent: boolean; value: SetStateAction<Value> }) => {
+      set(baseAtom, update.value)
+
+      if (!update.isEvent) {
+        channel.postMessage(get(baseAtom))
+      }
+    },
+  )
+
+  broadcastAtom.onMount = (setAtom) => {
+    const listener = (event: MessageEvent<any>) => {
+      setAtom({ isEvent: true, value: event.data })
+    }
+
+    listeners.add(listener)
+
+    return () => {
+      listeners.delete(listener)
+    }
+  }
+
+  const returnedAtom = atom(
+    (get) => get(broadcastAtom),
+    (_get, set, update: SetStateAction<Value>) => {
+      set(broadcastAtom, { isEvent: false, value: update })
+    },
+  )
+
+  return returnedAtom
+}
+
+const broadAtom = atomWithBroadcast('count', 0)
+
+const ListOfThings = () => {
+  const [count, setCount] = useAtom(broadAtom)
+
+  return (
+    <div>
+      {count}
+      <button onClick={() => setCount(count + 1)}>+1</button>
+    </div>
+  )
+}
+```
+
+<Stackblitz id="vitejs-vite-imqbzg" file="src%2FApp.tsx" />
+

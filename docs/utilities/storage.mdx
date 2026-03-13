@@ -1,0 +1,276 @@
+---
+title: Storage
+nav: 3.01
+keywords: storage,localstorage,sessionstorage,asyncstorage,persist,persistence
+---
+
+## atomWithStorage
+
+참조: https://github.com/pmndrs/jotai/pull/394
+
+```jsx
+import { useAtom } from 'jotai'
+import { atomWithStorage } from 'jotai/utils'
+
+const darkModeAtom = atomWithStorage('darkMode', false)
+
+const Page = () => {
+  const [darkMode, setDarkMode] = useAtom(darkModeAtom)
+
+  return (
+    <>
+      <h1>Welcome to {darkMode ? 'dark' : 'light'} mode!</h1>
+      <button onClick={() => setDarkMode(!darkMode)}>toggle theme</button>
+    </>
+  )
+}
+```
+
+`atomWithStorage` 함수는 React의 경우 `localStorage` 또는 `sessionStorage`, React Native의 경우 `AsyncStorage`에 값이 유지되는 원자를 생성합니다.
+
+### 매개변수
+
+**키** (필수): localStorage, sessionStorage 또는 AsyncStorage와 상태를 동기화할 때 키로 사용되는 고유 문자열
+
+**initialValue** (필수): 원자의 초기 값
+
+**storage** (선택 사항): 다음 메서드를 포함하는 객체:
+
+- **getItem(key,initialValue)** (필수): 저장소에서 항목을 읽거나 `intialValue`로 대체합니다.
+- **setItem(key, value)** (필수): 항목을 저장소에 저장합니다.
+- **removeItem(key)** (필수): 저장소에서 항목을 삭제합니다.
+- **subscribe(key, callback,initialValue)** (선택 사항): 외부 저장소 업데이트를 구독하는 메서드입니다.
+
+**옵션**(선택 사항): 다음 속성을 가진 개체:
+
+- **getOnInit**(선택 사항, 기본적으로 **false**): 초기화 시 저장소에서 항목을 가져올지 여부를 나타내는 부울 값입니다. `getOnInit`이 설정되지 않았거나 `false`인 SPA에서는 초기화 시 저장된 값 대신 항상 초기 값을 가져옵니다. 저장된 값을 선호하는 경우 `getOnInit`에서 `true`로 설정하세요.
+
+지정되지 않은 경우 기본 저장소 구현은 저장/검색에 `localStorage`를 사용하고 직렬화/역직렬화에 `JSON.stringify()`/`JSON.parse()`를 사용하며 크로스탭 동기화를 위해 `storage` 이벤트를 구독합니다.
+
+<Stackblitz id="vitejs-vite-xvlgfxrk" file="src%2FApp.tsx" />
+
+### `createJSONStorage` 유틸리티
+
+`storage` 옵션에 대해 `JSON.stringify()`/`JSON.parse()`를 사용하여 사용자 정의 저장소 구현을 생성하기 위해 `createJSONStorage` 유틸리티가 제공됩니다.
+
+용법:
+
+```js
+const storage = createJSONStorage(
+  // getStringStorage
+  () => localStorage, // 또는 sessionStorage, asyncStorage 또는 이와 유사한 것
+  // 옵션(선택사항)
+  {
+    reviver, // JSON.parse에 대한 선택적 부활 옵션
+    replacer, // JSON.stringify에 대한 선택적 대체 옵션
+  },
+)
+```
+
+참고: `JSON.parse`는 유형에 안전하지 않습니다. 어떤 유형도 허용할 수 없는 경우 프로덕션 앱에 대해 일종의 유효성 검사가 필요합니다.
+
+### 서버 측 렌더링
+
+저장된 아톰(예: `className` 또는 `style` prop)의 값에 의존하는 모든 JSX 마크업은 서버에서 렌더링될 때 `initialValue`를 사용합니다(`localStorage` 및 `sessionStorage`는 서버에서 사용할 수 없기 때문입니다).
+
+즉, 사용자가 `initialValue`와 다른 `storedValue`을 가지고 있는 경우 원래 사용자 브라우저에 HTML로 제공되는 내용과 복원 과정 중 React에서 예상되는 내용이 일치하지 않는다는 의미입니다.
+
+이 문제에 대해 제안된 해결 방법은 콘텐츠를 [맞춤 `<ClientOnly>` 래퍼](https://www.joshwcomeau.com/react/the-perils-of-rehydration/#abstractions)로 래핑하여 `storedValue` 클라이언트 측에 종속된 콘텐츠만 렌더링하는 것입니다. 이는 재수화 후에만 렌더링됩니다. 대체 솔루션은 기술적으로 가능하지만 `initialValue`가 `storedValue`로 바뀌면서 잠시 "깜박임"이 발생하여 불쾌한 사용자 경험을 초래할 수 있으므로 이 솔루션을 사용하는 것이 좋습니다.
+
+### 저장소에서 항목 삭제
+
+저장소에 있는 아이템을 삭제하고 싶은 경우,
+`atomWithStorage`로 생성된 atom은 write 시 `RESET` 심볼을 허용합니다.
+
+사용법은 다음 예를 참조하세요.
+
+```jsx
+import { useAtom } from 'jotai'
+import { atomWithStorage, RESET } from 'jotai/utils'
+
+const textAtom = atomWithStorage('text', 'hello')
+
+const TextBox = () => {
+  const [text, setText] = useAtom(textAtom)
+
+  return (
+    <>
+      <input value={text} onChange={(e) => setText(e.target.value)} />
+      <button onClick={() => setText(RESET)}>Reset (to 'hello')</button>
+    </>
+  )
+}
+```
+
+필요한 경우 이전 값을 기반으로 조건부 재설정을 수행할 수도 있습니다.
+
+이전 값이 조건을 충족하는 경우 localStorage에서 키를 지우려는 경우 특히 유용할 수 있습니다.
+
+아래에는 이전 값이 `true`일 때마다 `visible` 키를 지우는 사용법이 나와 있습니다.
+
+```jsx
+import { useAtom } from 'jotai'
+import { atomWithStorage, RESET } from 'jotai/utils'
+
+const isVisibleAtom = atomWithStorage('visible', false)
+
+const TextBox = () => {
+  const [isVisible, setIsVisible] = useAtom(isVisibleAtom)
+
+  return (
+    <>
+      { isVisible && <h1>Header is visible!</h1> }
+      <button onClick={() => setIsVisible((prev) => prev ? RESET : true))}>Toggle visible</button>
+    </>
+  )
+}
+```
+
+### React-네이티브 구현
+
+`getItem`, `setItem` & `removeItem`를 구현하는 모든 라이브러리를 사용할 수 있습니다.
+커뮤니티에서 제공하는 표준 AsyncStorage을 사용한다고 가정해 보겠습니다.
+
+```js
+import { atomWithStorage, createJSONStorage } from 'jotai/utils'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
+const storage = createJSONStorage(() => AsyncStorage)
+const content = {} // JSON 직렬화 가능한 모든 것
+const storedAtom = atomWithStorage('stored-key', content, storage)
+```
+
+**참고** 원자가 초기화 시 기본값 대신 저장된 값을 즉시 반환하도록 하려면 `getOnInit`를 `true`로 설정하세요.
+
+**getOnInit 참 대 거짓 예**
+
+<details>
+
+```jsx
+// localStorage에 이미 { "symbol": "BTC_USDC" }가 포함되어 있다고 가정합니다.
+
+// getOnInit 없음(기본 동작)
+const symbolAtom = atomWithStorage('symbol', 'SOL_USDC')
+
+function App() {
+  const symbol = useAtomValue(symbolAtom)
+
+  useEffect(() => {
+    console.log('symbol', symbol)
+  }, [symbol])
+
+  return <div>{symbol}</div>
+}
+
+// getOnInit가 없는 콘솔 출력:
+// LOG "symbol" SOL_USDC(초기 렌더링)
+// LOG "symbol" BTC_USDC(스토리지 로드 후)
+
+// getOnInit을 true로 설정한 경우
+const symbolAtom = atomWithStorage('symbol', 'SOL_USDC', undefined, {
+  getOnInit: true,
+})
+
+function App() {
+  const symbol = useAtomValue(symbolAtom)
+
+  useEffect(() => {
+    console.log('symbol', symbol)
+  }, [symbol])
+
+  return <div>{symbol}</div>
+}
+
+// getOnInit를 사용한 콘솔 출력:
+// LOG "symbol" BTC_USDC(저장된 값을 즉시 가져옴)
+```
+
+</details>
+
+#### AsyncStorage가 포함된 메모(v2.2.0부터)
+
+AsyncStorage(모든 비동기 저장소와 마찬가지로)를 사용하면 원자 값이 비동기화됩니다.
+현재 값을 참조하여 원자를 업데이트하는 경우 해당 값을 `await`해야 합니다.
+
+```js
+const countAtom = atomWithStorage('count-key', 0, anyAsyncStorage)
+const Component = () => {
+  const [count, setCount] = useAtom(countAtom)
+  const increment = () => {
+    setCount(async (promiseOrValue) => (await promiseOrValue) + 1)
+  }
+  // ...
+}
+```
+
+### 저장된 값 검증
+
+스토리지 Atom에 런타임 유효성 검사를 추가하려면 스토리지의 사용자 정의 구현을 생성해야 합니다.
+
+다음은 Zod를 활용하여 크로스탭 동기화를 통해 `localStorage`에 저장된 값의 유효성을 검사하는 예입니다.
+
+```js
+import { atomWithStorage } from 'jotai/utils'
+import { z } from 'zod'
+
+const myNumberSchema = z.number().int().nonnegative()
+
+const storedNumberAtom = atomWithStorage('my-number', 0, {
+  getItem(key, initialValue) {
+    const storedValue = localStorage.getItem(key)
+    try {
+      return myNumberSchema.parse(JSON.parse(storedValue ?? ''))
+    } catch {
+      return initialValue
+    }
+  },
+  setItem(key, value) {
+    localStorage.setItem(key, JSON.stringify(value))
+  },
+  removeItem(key) {
+    localStorage.removeItem(key)
+  },
+  subscribe(key, callback, initialValue) {
+    if (
+      typeof window === 'undefined' ||
+      typeof window.addEventListener === 'undefined'
+    ) {
+      return
+    }
+    const handler = (e) => {
+      if (e.storageArea === localStorage && e.key === key) {
+        let newValue
+        try {
+          newValue = myNumberSchema.parse(JSON.parse(e.newValue ?? ''))
+        } catch {
+          newValue = initialValue
+        }
+        callback(newValue)
+      }
+    }
+    window.addEventListener('storage', handler)
+    return () => window.removeEventListener('storage', handler)
+  },
+})
+```
+
+일부 경우를 단순화하기 위한 새로운 유틸리티 `unstable_withStorageValidator`도 있습니다.
+위의 경우는 다음과 같습니다.
+
+```js
+import {
+  atomWithStorage,
+  createJSONStorage,
+  unstable_withStorageValidator as withStorageValidator,
+} from 'jotai/utils'
+import { z } from 'zod'
+
+const myNumberSchema = z.number().int().nonnegative()
+const isMyNumber = (v) => myNumberSchema.safeParse(v).success
+
+const storedNumberAtom = atomWithStorage(
+  'my-number',
+  0,
+  withStorageValidator(isMyNumber)(createJSONStorage()),
+)
+```

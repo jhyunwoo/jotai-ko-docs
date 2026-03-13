@@ -1,0 +1,44 @@
+---
+title: React 밖에서 store 사용하기
+description: React 밖에서 store 사용하는 방법
+nav: 8.98
+keywords: state, outside, react
+published: false
+---
+
+Jotai의 상태는 React 안에 존재하지만, 때로는 React 바깥 세계와 상호작용해야 할 때가 있습니다.
+
+## createStore
+
+[`createStore`](../core/store.mdx#createstore)는 atom을 저장할 수 있는 store 인터페이스를 제공합니다. 이 store를 사용하면 React 밖에서도 저장된 atom의 상태를 읽고 변경할 수 있습니다.
+
+```jsx
+import { atom, useAtomValue, createStore, Provider } from 'jotai'
+
+const timeAtom = atom(0)
+const store = createStore()
+
+store.set(timeAtom, (prev) => prev + 1) // atom 값 업데이트
+store.get(timeAtom) // atom 값 읽기
+
+function Component() {
+  const time = useAtomValue(timeAtom) // React 내부
+  return (
+    <div className="App">
+      <h1>{time}</h1>
+    </div>
+  )
+}
+
+export default function App() {
+  return (
+    <Provider store={store}>
+      <Component />
+    </Provider>
+  )
+}
+```
+
+### 예제
+
+<Stackblitz id="vitejs-vite-m1h61f" file="src%2FApp.tsx" />

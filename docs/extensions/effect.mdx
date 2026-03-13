@@ -1,0 +1,361 @@
+---
+title: Effect
+description: 반응성 부작용을 위한 Jotai 유틸리티 패키지
+nav: 4.03
+keywords: effect, atom effect, side effect, side-effect, sideeffect
+---
+
+[jotai-effect](https://github.com/jotaijs/jotai-effect)는 Jotai의 반응형 side effect를 위한 유틸리티 패키지입니다.
+
+## 설치
+
+```
+npm install jotai-effect
+```
+
+## observe
+
+`observe`는 `effect`를 마운트해 Jotai `store`의 상태 변화를 감시합니다. store 수준에서 전역 side effect나 로직을 실행할 때 유용합니다.
+
+store 객체에 접근할 수 없고 기본 store를 사용하지 않는 경우에는 대신 `atomEffect` 또는 `withAtomEffect`를 사용하세요.
+
+### 서명
+
+```ts
+type Cleanup = () => void
+
+type Effect = (
+  get: Getter & { peek: Getter }
+  set: Setter & { recurse: Setter }
+) => Cleanup | void
+
+type Unobserve = () => void
+
+function observe(effect: Effect, store?: Store): Unobserve
+```
+
+**effect:** atom 상태 변화를 관찰하고 반응하는 함수입니다.
+
+**store:** effect를 적용할 Jotai store입니다. 제공하지 않으면 전역 store가 사용됩니다.
+
+**반환값:** store에서 effect를 제거하고 내부 참조를 정리하는 안정적인 함수입니다.
+
+### 사용법
+
+```js
+import { observe } from 'jotai-effect'
+
+const unobserve = observe((get, set) => {
+  set(logAtom, `someAtom changed: ${get(someAtom)}`)
+})
+
+unobserve()
+```
+
+이를 통해 Jotai 상태에 의존하는 로직을 React 생명주기 바깥에서 실행할 수 있으므로, 애플리케이션 전반의 effect를 구현할 때 적합합니다.
+
+### React로 사용
+
+effect가 올바른 store에 마운트되도록 하려면 `observe`와 `Provider` 모두에 같은 store를 전달하세요.
+
+```tsx
+const store = createStore()
+const unobserve = observe((get, set) => {
+  set(logAtom, `someAtom changed: ${get(someAtom)}`)
+}, store)
+
+<Provider store={store}>...</Provider>
+```
+
+<Stackblitz id="vitejs-vite-uk7p8i5q" file="src%2FApp.tsx" />
+
+## atomEffect
+
+`atomEffect` 마운트 시 상태 변경에 반응하는 부작용을 선언하기 위한 원자를 생성합니다.
+
+### 서명
+
+```ts
+function atomEffect(effect: Effect): Atom<void>
+```
+
+**effect:** atom 상태 변화를 관찰하고 반응하는 함수입니다.
+
+### 사용법
+
+```js
+import { atomEffect } from 'jotai-effect'
+
+const logEffect = atomEffect((get, set) => {
+  set(logAtom, get(someAtom)) // 마운트 시 또는 someAtom이 변경될 때 실행됩니다.
+  return () => {
+    set(logAtom, 'unmounting') // 마운트 해제 시 정리
+  }
+})
+
+// 컴포넌트가 마운트되어 있는 동안 atomEffect를 활성화합니다.
+function Component() {
+  useAtom(logEffect)
+}
+```
+
+## withAtomEffect
+
+`withAtomEffect`는 effect를 대상 atom의 클론에 결합합니다. 복제된 atom이 마운트되어 있는 동안 effect가 활성화됩니다.
+
+### 서명
+
+```ts
+function withAtomEffect<T>(targetAtom: Atom<T>, effect: Effect): Atom<T>
+```
+
+**targetAtom:** effect가 바인딩될 atom입니다.
+
+**effect:** atom 상태 변화를 관찰하고 반응하는 함수입니다.
+
+**반환값:** 대상 atom과 동일한 값을 가지지만 effect가 결합된 atom입니다.
+
+### 사용법
+
+```js
+import { withAtomEffect } from 'jotai-effect'
+
+const valuesAtom = withAtomEffect(atom(null), (get, set) => {
+  set(valuesAtom, get(countAtom))
+  return () => {
+    // 정리
+  }
+})
+```
+
+## 종속성 관리
+
+마운트 이벤트 외에도 해당 종속 항목의 값이 변경되면 효과가 실행됩니다.
+
+- **동기:**
+  effect 안에서 `get`으로 접근한 모든 atom은 의존성에 추가됩니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>예제</summary>
+
+  ```js
+  atomEffect((get, set) => {
+      // `anAtom` 값이 바뀔 때마다 업데이트됩니다.
+    get(anAtom)
+  })
+  ```
+
+  </details>
+
+- **비동기:**
+  비동기 `get` 호출은 종속성을 추가하지 않습니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>예제</summary>
+
+  ```js
+  atomEffect((get, set) => {
+    setTimeout(() => {
+      // `anAtom`은 의존성으로 추가되지 않습니다.
+      get(anAtom)
+    })
+  })
+  ```
+
+  </details>
+
+- **정리(cleanup):**
+  `get` 정리 호출은 종속성을 추가하지 않습니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>예제</summary>
+
+  ```js
+  atomEffect((get, set) => {
+    return () => {
+      // `anAtom`은 의존성으로 추가되지 않습니다.
+      get(anAtom)
+    }
+  })
+  ```
+
+  </details>
+
+- **종속성 맵 재계산:**
+  종속성은 실행될 때마다 다시 계산됩니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>예제</summary>
+
+  ```js
+  atomEffect((get, set) => {
+    if (get(isEnabledAtom)) {
+      // `isEnabledAtom`과 `anAtom`이 의존성입니다.
+      const aValue = get(anAtom)
+    } else {
+      // `isEnabledAtom`과 `anotherAtom`이 의존성입니다.
+      const anotherValue = get(anotherAtom)
+    }
+  })
+  ```
+
+  </details>
+
+## Effect 동작
+
+- **동기적으로 실행:**
+  `effect` 동기 평가가 완료된 후 현재 작업에서 동기를 실행합니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>Example</summary>
+
+  ```js
+  const logCounts = atomEffect((get, set) => {
+    set(logAtom, `count is ${get(countAtom)}`)
+  })
+  const actionAtom = atom(null, (get, set) => {
+    get(logAtom) // 'count is 0'
+    set(countAtom, (value) => value + 1) // 효과가 동기식으로 실행됨
+    get(logAtom) // 'count is 1'
+  })
+  store.sub(logCounts, () => {})
+  store.set(actionAtom)
+  ```
+
+  </details>
+
+- **일괄 업데이트:**
+  여러 동기 업데이트는 단일 원자성 트랜잭션으로 일괄 처리됩니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>Example</summary>
+
+  ```js
+  const tensAtom = atom(0)
+  const onesAtom = atom(0)
+  const updateTensAndOnes = atom(null, (get, set) => {
+    set(tensAtom, (value) => value + 1)
+    set(onesAtom, (value) => value + 1)
+  })
+  const combos = atom([])
+  const effectAtom = atomEffect((get, set) => {
+    const value = get(tensAtom) * 10 + get(onesAtom)
+    set(combos, (arr) => [...arr, value])
+  })
+  store.sub(effectAtom, () => {})
+  store.set(updateTensAndOnes)
+  store.get(combos) // [00, 11]
+  ```
+
+  </details>
+
+- **무한 루프에 대한 내성:**
+  `atomEffect` 보고 있는 값을 업데이트할 때 재실행을 방지합니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>Example</summary>
+
+  ```js
+  atomEffect((get, set) => {
+    get(countAtom)
+    set(countAtom, (value) => value + 1) // 반복되지 않음
+  })
+  ```
+
+  </details>
+
+- **정리 기능:**
+  정리 기능은 마운트 해제 시 또는 재평가 전에 호출됩니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>Example</summary>
+
+  ```js
+  atomEffect((get, set) => {
+    const intervalId = setInterval(() => set(clockAtom, Date.now()))
+    return () => clearInterval(intervalId)
+  })
+  ```
+
+  </details>
+
+- **멱등성:**
+  `atomEffect` 참조 횟수에 관계없이 상태 변경당 한 번 실행됩니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>Example</summary>
+
+  ```js
+  let i = 0
+  const effectAtom = atomEffect(() => {
+    get(countAtom)
+    i++
+  })
+  store.sub(effectAtom, () => {})
+  store.sub(effectAtom, () => {})
+  store.set(countAtom, (value) => value + 1)
+  console.log(i) // 1
+  ```
+
+  </details>
+
+- **조건부 실행 효과:**
+  `atomEffect` 마운트된 경우에만 실행됩니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>Example</summary>
+
+  ```js
+  atom((get) => {
+    if (get(isEnabledAtom)) {
+      get(effectAtom)
+    }
+  })
+  ```
+
+  </details>
+
+- **Peek 지원:**
+  구독하지 않고 원자 데이터를 읽으려면 `get.peek`를 사용하세요.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>Example</summary>
+
+  ```js
+  const countAtom = atom(0)
+  atomEffect((get, set) => {
+    const count = get.peek(countAtom) // `countAtom`를 종속성으로 추가하지 않습니다.
+  })
+  ```
+
+  </details>
+
+- **재귀 지원:**
+  재귀는 `set.recurse`에서 지원되지만 정리에서는 지원되지 않습니다.
+
+  {/* prettier-ignore */}
+  <details style="cursor: pointer; user-select: none;">
+    <summary>Example</summary>
+
+  ```js
+  atomEffect((get, set) => {
+    const count = get(countAtom)
+    if (count % 10 === 0) {
+      return
+    }
+    set.recurse(countAtom, (value) => value + 1)
+  })
+  ```
+
+  </details>

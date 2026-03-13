@@ -1,0 +1,65 @@
+---
+title: atomWithCompare
+nav: 9.05
+keywords: creators,compare
+---
+
+> `atomWithCompare`는 사용자 정의 비교 기능 `areEqual(prev, next)`이 false일 때 업데이트를 트리거하는 원자를 생성합니다.
+
+이렇게 하면 애플리케이션에 중요하지 않은 상태 변경을 무시하여 원치 않는 재렌더링을 방지하는 데 도움이 됩니다.
+
+참고: Jotai는 변경 사항이 발생할 때 값을 비교하기 위해 내부적으로 `Object.is`를 사용합니다. `areEqual(a, b)`가 false를 반환하고 `Object.is(a, b)`가 true를 반환하는 경우 Jotai는 업데이트를 트리거하지 않습니다.
+
+```ts
+import { atomWithReducer } from 'jotai/utils'
+
+export function atomWithCompare<Value>(
+  initialValue: Value,
+  areEqual: (prev: Value, next: Value) => boolean,
+) {
+  return atomWithReducer(initialValue, (prev: Value, next: Value) => {
+    if (areEqual(prev, next)) {
+      return prev
+    }
+
+    return next
+  })
+}
+```
+
+얕은 동일 업데이트를 무시하는 원자를 만드는 데 이를 사용하는 방법은 다음과 같습니다.
+
+```ts
+import { atomWithCompare } from 'XXX'
+import { shallowEquals } from 'YYY'
+import { CSSProperties } from 'react'
+
+const styleAtom = atomWithCompare<CSSProperties>(
+  { backgroundColor: 'blue' },
+  shallowEquals,
+)
+```
+
+구성요소에서:
+
+```jsx
+const StylePreview = () => {
+  const [styles, setStyles] = useAtom(styleAtom)
+
+  return (
+    <div>
+      <div styles={styles}>Style preview</div>
+
+      {/* Clicking this button twice will only trigger one render */}
+      <button onClick={() => setStyles({ ...styles, backgroundColor: 'red' })}>
+        Set background to red
+      </button>
+
+      {/* Clicking this button twice will only trigger one render */}
+      <button onClick={() => setStyles({ ...styles, fontSize: 32 })}>
+        Enlarge font
+      </button>
+    </div>
+  )
+}
+```

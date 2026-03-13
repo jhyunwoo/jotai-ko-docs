@@ -1,0 +1,166 @@
+---
+title: useAtom
+description: 이 문서에서는 핵심 `jotai` 번들을 설명합니다.
+nav: 2.02
+keywords: use,useatom,useatomvalue,usesetatom,atomvalue,setatom
+---
+
+## useAtom
+
+`useAtom` 훅은 state에서 atom을 읽는 데 사용됩니다.
+state는 atom config와 atom 값의 WeakMap으로 볼 수 있습니다.
+
+`useAtom` 훅은 React의 `useState`처럼 atom 값과 업데이트 함수를 튜플로 반환합니다.
+인수로는 `atom()`으로 생성한 atom config를 받습니다.
+
+atom config가 생성될 때는 아직 그와 연결된 값이 없습니다.
+atom이 `useAtom`을 통해 사용될 때 비로소 초기값이 state에 저장됩니다.
+atom이 파생 atom이라면, 초기값을 계산하기 위해 read 함수가 호출됩니다.
+atom이 더 이상 사용되지 않게 되면, 즉 그 atom을 사용하던 모든 컴포넌트가 언마운트되고
+atom config도 더 이상 참조되지 않으면, state 안의 값은 가비지 컬렉션 대상이 됩니다.
+
+```js
+const [value, setValue] = useAtom(anAtom)
+```
+
+`setValue`는 인수 하나만 받으며, 그 값은 atom의 write 함수에 세 번째 매개변수로 전달됩니다.
+최종 결과는 write 함수가 어떻게 구현되어 있는지에 따라 달라집니다.
+write 함수가 명시적으로 지정되지 않았다면, atom은 `setValue`에 전달된 값을 그대로 받게 됩니다.
+
+**참고:** _atom_ 섹션에서 언급했듯이 atom을 생성할 때는 참조 동일성이 중요하므로, 이를 제대로 다루지 않으면 무한 루프가 발생할 수 있습니다.
+
+```js
+const stableAtom = atom(0)
+const Component = () => {
+  const [atomValue] = useAtom(atom(0)) // 렌더마다 atom 인스턴스가 다시 생성되므로 무한 루프가 발생합니다.
+  const [atomValue] = useAtom(stableAtom) // 이 경우는 괜찮습니다.
+  const [derivedAtomValue] = useAtom(
+    useMemo(
+      // 이것도 괜찮습니다.
+      () => atom((get) => get(stableAtom) * 2),
+      [],
+    ),
+  )
+}
+```
+
+**참고:** React가 컴포넌트를 호출한다는 점을 기억하세요. 즉, 컴포넌트는 여러 번 호출되어도 같은 결과를 낼 수 있도록 멱등적이어야 합니다. props나 atom이 바뀌지 않았더라도 추가 렌더링이 발생하는 경우가 흔합니다. commit 없이 한 번 더 렌더링되는 것은 React 18의 `useReducer` 기본 동작에 따른 예상된 동작입니다.
+
+### 시그니처
+
+```ts
+// primitive atom 또는 writable derived atom
+function useAtom<Value, Update>(
+  atom: WritableAtom<Value, Update>,
+  options?: { store?: Store },
+): [Value, SetAtom<Update>]
+
+// read-only atom
+function useAtom<Value>(
+  atom: Atom<Value>,
+  options?: { store?: Store },
+): [Value, never]
+```
+
+### atom 의존성이 동작하는 방식
+
+"read" 함수를 호출할 때마다 의존성과 dependent가 새로 갱신됩니다.
+
+> read 함수는 atom의 첫 번째 매개변수입니다.
+> B가 A에 의존한다면, A는 B의 dependency이고 B는 A의 dependent입니다.
+
+```js
+const uppercaseAtom = atom((get) => get(textAtom).toUpperCase())
+```
+
+atom을 생성하는 시점에는 의존성이 아직 존재하지 않습니다.
+처음 사용할 때 read 함수를 실행하면서 `uppercaseAtom`이 `textAtom`에 의존한다는 사실이 결정됩니다.
+그래서 `uppercaseAtom`은 `textAtom`의 dependent에 추가됩니다.
+이후 `uppercaseAtom`의 read 함수를 다시 실행하면(`textAtom` 의존성이 갱신되었기 때문입니다),
+의존성이 다시 만들어집니다. 이 예제에서는 같은 의존성이므로,
+`textAtom`에서 오래된 dependent를 제거하고 최신 버전으로 교체하게 됩니다.
+
+### atom은 필요할 때 생성할 수 있습니다
+
+여기 나온 기본 예제들은 컴포넌트 바깥 전역에서 atom을 정의하는 방식을 보여주지만,
+언제 어디서 atom을 만들 수 있는지에 대한 제한은 없습니다.
+atom은 객체의 참조 동일성으로 식별된다는 점만 기억하면,
+필요한 시점에 언제든 생성할 수 있습니다.
+
+렌더 함수 안에서 atom을 생성한다면 일반적으로
+`useRef`나 `useMemo` 같은 훅으로 메모이제이션하는 것이 좋습니다.
+그렇지 않으면 컴포넌트가 렌더링될 때마다 atom이 다시 생성됩니다.
+
+atom을 만들어 `useState`나 다른 atom 안에 저장할 수도 있습니다.
+[issue #5](https://github.com/pmndrs/jotai/issues/5)의 예제를 참고하세요.
+
+전역 어딘가에 atom을 캐시할 수도 있습니다.
+[이 예제](https://twitter.com/dai_shi/status/1317653548314718208) 또는
+[저 예제](https://github.com/pmndrs/jotai/issues/119#issuecomment-706046321)를 참고하세요.
+
+매개변수가 있는 atom이 필요하다면 utils의 [`atomFamily`](../utilities/family.mdx)를 확인하세요.
+
+## useAtomValue
+
+```jsx
+const countAtom = atom(0)
+
+const Counter = () => {
+  const setCount = useSetAtom(countAtom)
+  const count = useAtomValue(countAtom)
+
+  return (
+    <>
+      <div>count: {count}</div>
+      <button onClick={() => setCount(count + 1)}>+1</button>
+    </>
+  )
+}
+```
+
+`useSetAtom` 훅과 비슷하게 `useAtomValue`를 사용하면 읽기 전용 atom 값에 접근할 수 있습니다.
+물론 읽기-쓰기 atom의 값을 읽는 데도 사용할 수 있습니다.
+
+## useSetAtom
+
+```jsx
+const switchAtom = atom(false)
+
+const SetTrueButton = () => {
+  const setCount = useSetAtom(switchAtom)
+  const setTrue = () => setCount(true)
+
+  return (
+    <div>
+      <button onClick={setTrue}>Set True</button>
+    </div>
+  )
+}
+
+const SetFalseButton = () => {
+  const setCount = useSetAtom(switchAtom)
+  const setFalse = () => setCount(false)
+
+  return (
+    <div>
+      <button onClick={setFalse}>Set False</button>
+    </div>
+  )
+}
+
+export default function App() {
+  const state = useAtomValue(switchAtom)
+
+  return (
+    <div>
+      State: <b>{state.toString()}</b>
+      <SetTrueButton />
+      <SetFalseButton />
+    </div>
+  )
+}
+```
+
+atom 값을 읽지 않고 갱신만 해야 한다면 `useSetAtom()`을 사용할 수 있습니다.
+
+이 방식은 특히 성능이 중요할 때 유용합니다. `const [, setValue] = useAtom(valueAtom)`는 `valueAtom`이 업데이트될 때마다 불필요한 리렌더를 일으킬 수 있기 때문입니다.

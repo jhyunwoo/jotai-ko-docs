@@ -1,0 +1,132 @@
+---
+title: 함수형 프로그래밍 및 Jotai
+nav: 7.04
+---
+
+### 예상치 못한 유사점
+
+getter 함수를 오래 들여다보고 있으면,
+JavaScript의 어떤 기능과 놀랄 만큼 닮아 있다는 사실을 발견하게 될지도 모릅니다.
+
+```tsx
+const nameAtom = atom('Visitor')
+const countAtom = atom(1)
+const greetingAtom = atom((get) => {
+  const name = get(nameAtom)
+  const count = get(countAtom)
+  return (
+    <div>
+      Hello, {name}! You have visited this page {count} times.
+    </div>
+  )
+})
+```
+
+해당 코드를 `async`–`await`와 비교해보세요.
+
+```tsx
+const namePromise = Promise.resolve('Visitor')
+const countPromise = Promise.resolve(1)
+const greetingPromise = (async function () {
+  const name = await namePromise
+  const count = await countPromise
+  return (
+    <div>
+      Hello, {name}! You have visited this page {count} times.
+    </div>
+  )
+})()
+```
+
+이 유사성은 우연이 아닙니다. atom과 Promise는 둘 다 **모나드**†이며,
+이는 함수형 프로그래밍의 개념입니다. `greetingAtom`과 `greetingPromise`에 쓰인 이 문법은
+더 기본적인 모나드 인터페이스를 감싸는 문법 설탕인 **do-notation**이라고 불립니다.
+
+### 모나드에 대하여
+
+모나드 인터페이스는 atom과 Promise 인터페이스가 자연스럽게 흘러가도록 해 주는 핵심입니다.
+덕분에 `greetingAtom`을 `nameAtom`과 `countAtom`을 바탕으로 정의할 수 있었고,
+`greetingPromise`를 `namePromise`와 `countPromise`를 바탕으로 정의할 수도 있었습니다.
+
+궁금하다면, 어떤 구조(`Atom`이나 `Promise` 같은)가 모나드이려면
+다음과 같은 함수를 구현할 수 있어야 합니다.
+배열에 대해 `of`, `map`, `join`을 구현해 보는 것도 재미있는 연습입니다.
+
+```ts
+type SomeMonad<T> = /* for example... */ Array<T>
+declare function of<T>(plainValue: T): SomeMonad<T>
+declare function map<T, V>(
+  anInstance: SomeMonad<T>,
+  transformContents: (contents: T) => V,
+): SomeMonad<V>
+declare function join<T>(nestedInstances: SomeMonad<SomeMonad<T>>): SomeMonad<T>
+```
+
+Promise와 atom이 이런 기반을 공유한다는 것은,
+둘 사이에서 여러 패턴과 모범 사례를 재사용할 수 있다는 뜻이기도 합니다.
+그중 하나를 살펴보겠습니다.
+
+### 시퀀싱
+
+콜백 지옥을 이야기할 때 우리는 흔히 상용구 코드, 깊어지는 들여쓰기,
+그리고 놓치기 쉬운 실수를 떠올립니다. 하지만 하나의 비동기 작업을
+다른 하나의 비동기 작업에 이어 붙이는 것만이 콜백의 어려움은 아니었습니다.
+예를 들어 네트워크 호출을 네 번 하고 모두 끝날 때까지 기다려야 한다면 어떨까요?
+예전에는 이런 코드가 흔했습니다.
+
+```ts
+const nPending = 4
+const results: string[]
+function callback(err, data) {
+  if (err) throw err
+  results.push(data)
+  if (results.length === nPending) {
+    // 뭔가 결과를 가지고 해라...
+  }
+}
+```
+
+그런데 결과들의 타입이 서로 다르고 순서까지 중요하다면 어떨까요?
+그러면 훨씬 더 성가신 작업이 필요해집니다. 이런 로직은 사용할 때마다 중복되고,
+망가뜨리기도 쉽습니다. ES6 이후에는 그냥 `Promise.all`을 호출하면 됩니다.
+
+```ts
+declare function promiseAll<T>(promises: Array<Promise<T>>): Promise<Array<T>>
+```
+
+`Promise.all`은 `Array`와 `Promise`를 "재배열"합니다. 이런 개념을
+_sequencing_이라고 하며, 모든 모나드-_Traversable_ 조합에 대해 구현할 수 있습니다.
+배열을 포함해 여러 종류의 컬렉션이 Traversable에 속합니다.
+예를 들어 다음은 atom과 배열에 특화된 sequencing입니다.
+
+```ts
+function sequenceAtomArray<T>(atoms: Array<Atom<T>>): Atom<Array<T>> {
+  return atom((get) => atoms.map(get))
+}
+```
+
+### 마무리
+
+모나드는 수학자들에게는 60년 동안, 프로그래머들에게는 40년 동안 흥미로운 주제였습니다.
+모나드 패턴에 대한 자료도 많이 있으니 한 번 살펴보세요.
+몇 가지를 소개하면 다음과 같습니다.
+
+- [_모나드 발명_](https://stopa.io/post/247) 작성자: Stepan Parunashvili
+- [_모나드가 문제를 해결하는 방법_](https://thatsnomoon.dev/posts/ts-monads/) 작성자: ThatsNoMoon
+- 위키 페이지 [모나드 튜토리얼 목록](https://wiki.haskell.org/Monad_tutorials_timeline)
+- [유형분류사전](https://wiki.haskell.org/Typeclassopedia) (궁금하신 분들을 위해)
+
+Promise를 다루는 멋진 요령을 배우면,
+`Promise.all`과 `sequenceAtomArray`의 관계처럼 atom 쪽으로도 그대로 옮겨올 수 있습니다.
+모나드는 마법이 아닙니다. 다만 유난히 유용하고, 알아 둘 가치가 있는 도구일 뿐입니다.
+
+---
+
+_참고_
+
+**[†]** ES6 Promise는 다른 Promise를 중첩할 수 없기 때문에 완전히 엄밀한 의미의 모나드는 아닙니다.
+예를 들어 `Promise<Promise<number>>`는 의미상 `Promise<number>`와 같습니다.
+이것이 Promise에 `.map`과 `.flatMap`이 모두 있는 대신 `.then`만 있는 이유입니다.
+그래서 ES6 Promise는 모나드라기보다 "모나딕(monadic)"하다고 설명하는 편이 더 적절할 수 있습니다.
+
+ES6 Promises와 달리 ES6 배열은 완전히 합법적인 모나드입니다.

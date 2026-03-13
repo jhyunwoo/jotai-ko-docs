@@ -1,0 +1,120 @@
+---
+title: Immer
+description: 이 문서에서는 Immer 확장 프로그램에 대해 설명합니다.
+nav: 4.04
+keywords: immer
+---
+
+### 설치
+
+이 기능을 사용하려면 `immer` 및 `jotai-immer`를 설치해야 합니다.
+
+```
+npm install immer jotai-immer
+```
+
+## atomWithImmer
+
+`atomWithImmer`는 다른 `writeFunction`를 사용해 일반 [`atom`](../core/atom.mdx)과 비슷한 새 atom을 생성합니다. 이 번들에는 read-only atom이 없습니다. 이 함수들의 핵심이 immer의 produce(가변성) 함수이기 때문입니다.
+writeFunction의 서명은 `(get, set, update: (draft: Draft<Value>) => void) => void`입니다.
+
+```jsx
+import { useAtom } from 'jotai'
+import { atomWithImmer } from 'jotai-immer'
+
+const countAtom = atomWithImmer({ value: 0 })
+
+const Counter = () => {
+  const [count] = useAtom(countAtom)
+  return <div>count: {count.value}</div>
+}
+
+const Controls = () => {
+  const [, setCount] = useAtom(countAtom)
+  // setCount === 업데이트 함수: (draft: Draft<Value>) => void
+  const inc = () =>
+    setCount((draft) => {
+      ++draft.value
+    })
+  return <button onClick={inc}>+1</button>
+}
+```
+
+### 예제
+
+atomWithImmer를 사용한 예제를 확인하세요.
+
+<Stackblitz id="vitejs-vite-tblppw" file="src%2FApp.tsx" />
+
+## withImmer
+
+`withImmer`는 원자를 가져와 파생된 원자를 반환합니다. `atomWithImmer`와 동일하지만 `writeFunction`가 다릅니다.
+
+```jsx
+import { useAtom, atom } from 'jotai'
+import { withImmer } from 'jotai-immer'
+
+const primitiveAtom = atom({ value: 0 })
+const countAtom = withImmer(primitiveAtom)
+
+const Counter = () => {
+  const [count] = useAtom(countAtom)
+  return <div>count: {count.value}</div>
+}
+
+const Controls = () => {
+  const [, setCount] = useAtom(countAtom)
+  // setCount === 업데이트 함수: (draft: Draft<Value>) => void
+  const inc = () =>
+    setCount((draft) => {
+      ++draft.value
+    })
+  return <button onClick={inc}>+1</button>
+}
+```
+
+### 예제
+
+withImmer를 사용한 예제를 확인하세요.
+
+<Stackblitz id="vitejs-vite-jwfjqm" file="src%2FApp.tsx" />
+
+## useImmerAtom
+
+이 훅은 atom을 받아, 앞선 헬퍼들처럼 그 atom의 `writeFunction`를 새로운 immer 스타일 `writeFunction`으로 바꿉니다.
+
+```jsx
+import { atom } from 'jotai'
+import { useImmerAtom } from 'jotai-immer'
+
+const primitiveAtom = atom({ value: 0 })
+
+const Counter = () => {
+  const [count] = useImmerAtom(primitiveAtom)
+  return <div>count: {count.value}</div>
+}
+
+const Controls = () => {
+  const [, setCount] = useImmerAtom(primitiveAtom)
+  // setCount === 업데이트 함수: (draft: Draft<Value>) => void
+  const inc = () =>
+    setCount((draft) => {
+      ++draft.value
+    })
+  return <button onClick={inc}>+1</button>
+}
+```
+
+`withImmer`와 `atomWithImmer`는 이미 immer 스타일 `writeFunction`을 제공하므로, 이것들을 `useImmerAtom`과 함께 쓰지 않는 편이 더 좋습니다.
+
+`useImmerAtom`의 setter 부분만 필요하다면 `useSetImmerAtom`를 사용할 수 있습니다.
+
+### 예제
+
+useImmerAtom을 사용한 예제를 확인하세요.
+
+<Stackblitz id="vitejs-vite-k2rixl" file="src%2FApp.tsx" />
+
+## 데모
+
+<Stackblitz id="vitejs-vite-tksbwq" file="src%2FApp.tsx" />

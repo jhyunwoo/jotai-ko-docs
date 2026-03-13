@@ -1,0 +1,99 @@
+---
+title: SSR
+nav: 3.02
+keywords: ssr,server,hydrate,hydration,next,nextjs,gatsby,remix,waku,framework
+---
+
+## useHydrateAtoms
+
+참조: https://github.com/pmndrs/jotai/issues/340
+
+### 사용법
+
+```js
+import { atom, useAtom } from 'jotai'
+import { useHydrateAtoms } from 'jotai/utils'
+
+const countAtom = atom(0)
+const CounterPage = ({ countFromServer }) => {
+  useHydrateAtoms([[countAtom, countFromServer]])
+  const [count] = useAtom(countAtom)
+  // count는 0이 아닌 `countFromServer` 값이 됩니다.
+}
+```
+
+`useHydrateAtoms`의 주요 사용 사례는 Next.js와 같은 SSR 앱입니다. 여기서 초기 값은 예를 들어 서버에서 가져와서 props를 통해 구성 요소에 전달할 수 있습니다.
+
+⚠️ 참고: "hydration"이라는 용어가 서버측 사용을 암시할 수 있지만 이 후크는 클라이언트측 코드용으로 설계되었으며 [`'use client'` 지시어](https://react.dev/reference/rsc/use-client)와 함께 사용해야 합니다.
+
+```ts
+// 정의
+function useHydrateAtoms(
+  values: Iterable<readonly [Atom<unknown>, unknown]>,
+  options?: { store?: Store },
+): void
+```
+
+후크는 `[atom, value]`를 인수와 선택적 옵션으로 포함하는 반복 가능한 튜플을 사용합니다.
+
+```js
+// 배열과 함께 사용, 저장소 지정
+useHydrateAtoms(
+  [
+    [countAtom, 42],
+    [frameworkAtom, 'Next.js'],
+  ],
+  { store: myStore },
+)
+// 아니면 지도로
+useHydrateAtoms(new Map([[count, 42]]))
+```
+
+atom은 store마다 한 번만 hydrate할 수 있습니다. 따라서 리렌더링 중에 사용한 초기값이 바뀌더라도 atom 값은 업데이트되지 않습니다.
+이미 hydrate된 atom을 다시 hydrate해야 하는 특별한 경우에는 선택적 옵션 `dangerouslyForceHydrate`를 `true`로 전달할 수 있습니다.
+다만 이 옵션은 concurrent rendering에서 올바르게 동작하지 않을 수 있습니다.
+
+```js
+useHydrateAtoms(
+  [
+    [countAtom, 42],
+    [frameworkAtom, 'Next.js'],
+  ],
+  {
+    dangerouslyForceHydrate: true,
+  },
+)
+```
+
+여러 store를 hydrate해야 한다면 `useHydrateAtoms` 훅을 여러 번 사용하면 됩니다.
+
+```js
+useHydrateAtoms([
+  [countAtom, 42],
+  [frameworkAtom, 'Next.js'],
+])
+useHydrateAtoms(
+  [
+    [countAtom, 17],
+    [frameworkAtom, 'Gatsby'],
+  ],
+  { store: myStore },
+)
+```
+
+대상 `ES5`와 함께 TypeScript를 사용하는 경우 튜플 유형을 유지하기 위해 배열에 `as const` 캐스트가 필요할 수 있습니다.
+
+```ts
+useHydrateAtoms([
+  [countAtom, 42],
+  [frameworkAtom, 'Next.js'],
+] as const)
+```
+
+또는 원자 값을 useHydrateAtoms에 전달할 때 맵을 사용해야 할 수도 있습니다. [렌더링 문서의 상태 초기화](https://jotai.org/docs/guides/initialize-atom-on-render#using-typescript)에서 실제 예제를 찾을 수 있습니다.
+
+### 데모
+
+<Stackblitz id="stackblitz-starters-b7cvxi" file="pages%2Findex.tsx" />
+
+[Next.js 섹션](../guides/nextjs.mdx)에 더 많은 예시가 있습니다.

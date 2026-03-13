@@ -1,0 +1,162 @@
+---
+title: 원자 속의 원자
+nav: 8.12
+---
+
+`atom()` 객체인 Atom 구성을 생성하지만 값을 보유하지 않습니다.
+Atom 구성에는 문자열 키가 없으며 참조 동일성을 통해 식별합니다.
+즉, 원자 구성을 키처럼 사용할 수 있습니다.
+
+### useState에 원자 구성 저장
+
+먼저, useState에 Atom 구성을 저장할 수 있습니다.
+
+```jsx
+const Component = ({ atom1, atom2 }) => {
+  const [selectedAtom, setSelectedAtom] = useState(atom1)
+  const [value] = useAtom(selectedAtom)
+  return (
+    <div>
+      Selected value: {value}
+      <button onClick={() => setSelectedAtom(atom1)}>Select an atom</button>
+      <button onClick={() => setSelectedAtom(atom2)}>
+        Select another atom
+      </button>
+    </div>
+  )
+}
+```
+
+원자 구성을 소품으로 전달할 수 있습니다.
+
+말이 안 될 수도 있지만 필요에 따라 원자 구성을 만들 수 있습니다.
+
+```jsx
+const Component = () => {
+  const [currentAtom, setCurrentAtom] = useState(() => atom(0))
+  const [count, setCount] = useAtom(currentAtom)
+  return (
+    <div>
+      Count: {count} <button onClick={() => setCount((c) => c + 1)}>+1</button>
+      <button onClick={() => setCurrentAtom(atom(0))}>Create new</button>
+    </div>
+  )
+}
+```
+
+### Atom에 Atom 구성 저장
+
+마찬가지로 원자 구성을 다른 원자의 값으로 저장할 수 있습니다.
+
+```jsx
+const firstNameAtom = atom('Tanjiro')
+const lastNameAtom = atom('Kamado')
+
+const showingNameAtom = atom(firstNameAtom)
+
+const Component = () => {
+  const [nameAtom, setNameAtom] = useAtom(showingNameAtom)
+  const [name] = useAtom(nameAtom)
+  return (
+    <div>
+      Name: {name}
+      <button onClick={() => setNameAtom(firstNameAtom)}>
+        Show First Name
+      </button>
+      <button onClick={() => setNameAtom(lastNameAtom)}>Show Last Name</button>
+    </div>
+  )
+}
+```
+
+파생 원자를 만드는 것이 가능합니다.
+
+```js
+const derivedNameAtom = atom((get) => {
+  const nameAtom = get(showingNameAtom)
+  return get(nameAtom)
+})
+
+// 아니면 더 짧은 버전
+const derivedNameAtom = atom((get) => get(get(showingNameAtom)))
+```
+
+원자 안에 무엇이 있는지 혼동하지 않으려면 원자의 이름을 명시적으로 지정하는 것이 중요합니다.
+또한 TypeScript 유형 정보도 도움이 될 것입니다.
+
+### Atom에 Atom 구성 배열 저장
+
+마지막으로 원자 패턴의 원자는 원자 구성의 배열을 원자에 저장하는 것입니다.
+
+```jsx
+const countsAtom = atom([atom(1), atom(2), atom(3)])
+
+const Counter = ({ countAtom }) => {
+  const [count, setCount] = useAtom(countAtom)
+  return (
+    <div>
+      {count} <button onClick={() => setCount((c) => c + 1)}>+1</button>
+    </div>
+  )
+}
+
+const Parent = () => {
+  const [counts, setCounts] = useAtom(countsAtom)
+  const addNewCount = () => {
+    const newAtom = atom(0)
+    setCounts((prev) => [...prev, newAtom])
+  }
+  return (
+    <div>
+      {counts.map((countAtom) => (
+        <Counter countAtom={countAtom} key={countAtom} />
+      ))}
+      <button onClick={addNewCount}>Add</button>
+    </div>
+  )
+}
+```
+
+이 접근 방식의 이점은 개수를 늘리면
+해당 Counter 구성 요소만 다시 렌더링되고 다른 구성 요소는 다시 렌더링되지 않습니다.
+
+`anAtom.toString()`는 지도에서 `key`로 사용될 수 있는 고유 ID를 반환한다는 점에 유의하는 것이 중요합니다.
+
+#### TypeScript 사용자를 위한 힌트
+
+```jsx
+<Counter countAtom={countAtom} key={`${countAtom}`} />
+```
+
+### Atom에 Atom 구성 맵 저장
+
+마찬가지로 배열 대신 객체 맵을 저장할 수 있습니다.
+
+```jsx
+const pricesAtom = atom({
+  apple: atom(15),
+  orange: atom(12),
+  pineapple: atom(25),
+})
+
+const Fruit = ({ name, priceAtom }) => {
+  const [price] = useAtom(priceAtom)
+  return (
+    <div>
+      {name}: {price}
+    </div>
+  )
+}
+
+const Parent = () => {
+  const [prices] = useAtom(pricesAtom)
+  return (
+    <div>
+      {Object.keys(prices).map((name) => (
+        <Fruit name={name} priceAtom={prices[name]} key={name} />
+      ))}
+    </div>
+  )
+}
+```
+

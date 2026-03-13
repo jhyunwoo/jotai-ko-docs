@@ -1,0 +1,87 @@
+---
+title: atomWithListeners
+nav: 9.08
+keywords: creators,listeners
+---
+
+> `atomWithListeners` atom과 훅을 생성합니다. 이 훅을 통해 리스너를 등록할 수 있습니다.
+> 새 리스너를 추가합니다. 후크는 콜백을 인수로 취하며,
+> 콜백은 원자 값이 설정될 때마다 호출됩니다. 후크도
+> 리스너를 제거하는 함수를 반환합니다.
+
+이는 다음과 같은 경우에 들을 수 있는 구성 요소를 생성하려는 경우 유용할 수 있습니다.
+각 구성요소를 다시 렌더링할 필요 없이 원자의 상태가 변경됩니다.
+그 상태가 변경됩니다.
+
+```ts
+import { useEffect } from 'react'
+import {
+  atom,
+  useAtom,
+  useSetAtom,
+  Getter,
+  Setter,
+  SetStateAction,
+} from 'jotai'
+
+type Callback<Value> = (
+  get: Getter,
+  set: Setter,
+  newVal: Value,
+  prevVal: Value,
+) => void
+
+export function atomWithListeners<Value>(initialValue: Value) {
+  const baseAtom = atom(initialValue)
+  const listenersAtom = atom<Callback<Value>[]>([])
+  const anAtom = atom(
+    (get) => get(baseAtom),
+    (get, set, arg: SetStateAction<Value>) => {
+      const prevVal = get(baseAtom)
+      set(baseAtom, arg)
+      const newVal = get(baseAtom)
+      get(listenersAtom).forEach((callback) => {
+        callback(get, set, newVal, prevVal)
+      })
+    },
+  )
+  const useListener = (callback: Callback<Value>) => {
+    const setListeners = useSetAtom(listenersAtom)
+    useEffect(() => {
+      setListeners((prev) => [...prev, callback])
+      return () =>
+        setListeners((prev) => {
+          const index = prev.indexOf(callback)
+          return [...prev.slice(0, index), ...prev.slice(index + 1)]
+        })
+    }, [setListeners, callback])
+  }
+  return [anAtom, useListener] as const
+}
+```
+
+구성요소에서:
+
+```jsx
+const [countAtom, useCountListener] = atomWithListeners(0)
+
+function EvenCounter() {
+  const [evenCount, setEvenCount] = useAtom(countAtom)
+
+  useCountListener(
+    useCallback(
+      (get, set, newVal, prevVal) => {
+        // `countAtom` 값이 설정될 때마다 새로운 값이 있는지 확인합니다.
+        // 짝수이면 `evenCount`를 증가시킵니다.
+        if (newVal % 2 === 0) {
+          setEvenCount((c) => c + 1)
+        }
+      },
+      [setEvenCount],
+    ),
+  )
+
+  return <>Count was set to an even number {evenCount} times.</>
+}
+```
+

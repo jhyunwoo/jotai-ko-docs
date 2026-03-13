@@ -1,0 +1,55 @@
+---
+title: atomWithToggle
+nav: 9.04
+keywords: creators,toggle
+---
+
+> `atomWithToggle` 초기 상태로 부울을 사용하고 이를 토글하는 setter 함수를 사용하여 새 원자를 생성합니다.
+
+이렇게 하면 첫 번째 원자의 상태를 업데이트하기 위해 다른 원자를 설정해야 하는 상용구를 피할 수 있습니다.
+
+```ts
+import { WritableAtom, atom } from 'jotai'
+
+export function atomWithToggle(
+  initialValue?: boolean,
+): WritableAtom<boolean, [boolean?], void> {
+  const anAtom = atom(initialValue, (get, set, nextValue?: boolean) => {
+    const update = nextValue ?? !get(anAtom)
+    set(anAtom, update)
+  })
+
+  return anAtom as WritableAtom<boolean, [boolean?], void>
+}
+```
+
+선택적 초기 상태가 첫 번째 인수로 제공될 수 있습니다.
+
+setter 함수는 setActive 함수를 만들려는 경우와 같이 특정 상태를 강제하는 선택적 인수를 가질 수 있습니다.
+
+사용 방법은 다음과 같습니다.
+
+```js
+import { atomWithToggle } from 'XXX'
+
+// 초기 값은 true로 설정됩니다.
+const isActiveAtom = atomWithToggle(true)
+```
+
+구성 요소에서는 다음과 같습니다.
+
+```jsx
+const Toggle = () => {
+  const [isActive, toggle] = useAtom(isActiveAtom)
+
+  return (
+    <>
+      <button onClick={() => toggle()}>
+        isActive: {isActive ? 'yes' : 'no'}
+      </button>
+      <button onClick={() => toggle(true)}>force true</button>
+      <button onClick={() => toggle(false)}>force false</button>
+    </>
+  )
+}
+```

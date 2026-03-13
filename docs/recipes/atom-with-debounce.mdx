@@ -1,0 +1,94 @@
+---
+title: atomWithDebounce
+nav: 9.10
+keywords: creators,debounce
+---
+
+> `atomWithDebounce`는 상태 업데이트가 디바운싱되어야 하는 atom을 만드는 데 도움이 됩니다.
+
+이 유틸리티는 키를 누를 때마다 작업을 실행하는 대신 일정 기간 동안 기다린 후 **파생 원자의 함수를 한 번만** 호출하려는 텍스트 검색 입력에 유용합니다.
+
+```tsx
+import { atom, SetStateAction } from 'jotai'
+
+export default function atomWithDebounce<T>(
+  initialValue: T,
+  delayMilliseconds = 500,
+  shouldDebounceOnReset = false,
+) {
+  const prevTimeoutAtom = atom<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  )
+
+  // 상태를 설정할 때 이 atom을 사용한다면 currentValueAtom은 export하지 마세요.
+  // currentValueAtom과 debouncedValueAtom 사이에 불일치 상태가 생길 수 있습니다.
+  const _currentValueAtom = atom(initialValue)
+  const isDebouncingAtom = atom(false)
+
+  const debouncedValueAtom = atom(
+    initialValue,
+    (get, set, update: SetStateAction<T>) => {
+      clearTimeout(get(prevTimeoutAtom))
+
+      const prevValue = get(_currentValueAtom)
+      const nextValue =
+        typeof update === 'function'
+          ? (update as (prev: T) => T)(prevValue)
+          : update
+
+      const onDebounceStart = () => {
+        set(_currentValueAtom, nextValue)
+        set(isDebouncingAtom, true)
+      }
+
+      const onDebounceEnd = () => {
+        set(debouncedValueAtom, nextValue)
+        set(isDebouncingAtom, false)
+      }
+
+      onDebounceStart()
+
+      if (!shouldDebounceOnReset && nextValue === initialValue) {
+        onDebounceEnd()
+        return
+      }
+
+      const nextTimeoutId = setTimeout(() => {
+        onDebounceEnd()
+      }, delayMilliseconds)
+
+      // 나중에 지워야 할 수 있으므로 이전 timeout atom을 설정합니다.
+      set(prevTimeoutAtom, nextTimeoutId)
+    },
+  )
+
+  // 필요할 때 timeout을 지울 수 있도록 atom setter를 export합니다.
+  const clearTimeoutAtom = atom(null, (get, set, _arg) => {
+    clearTimeout(get(prevTimeoutAtom))
+    set(isDebouncingAtom, false)
+  })
+
+  return {
+    currentValueAtom: atom((get) => get(_currentValueAtom)),
+    isDebouncingAtom,
+    clearTimeoutAtom,
+    debouncedValueAtom,
+  }
+}
+```
+
+### 경고
+
+이 atom은 비용이 큰 업데이트 때문에 페이지 상호작용이 막히는 것을 방지하는 것이 주목적인 React 18의 동시성 기능, 예를 들어 `useTransition`이나 `useDeferredValue`와는 다른 목표를 가집니다.
+
+자세한 내용은 https://github.com/reactwg/react-18/discussions/41 의 **"How is this different from setTimeout?"** 섹션을 읽어 보세요.
+
+### 사용 예
+
+아래 샌드박스 링크는 파생된 원자를 사용하여 `debouncedValueAtom` 값을 기반으로 상태를 가져오는 방법을 보여줍니다.
+
+`<SearchInput>`에 포켓몬 이름을 입력할 때 모든 문자에 대해 가져오기 요청을 보내는 것이 아니라 마지막 텍스트 입력 이후 `delayMilliseconds`이 지나간 후에만 가져오기 요청을 보냅니다.
+
+이렇게 하면 서버에 대한 백엔드 요청 수가 줄어듭니다.
+
+<Stackblitz id="vitejs-vite-chvvtu" file="src%2FApp.tsx" />

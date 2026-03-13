@@ -1,0 +1,124 @@
+---
+title: Split
+nav: 3.99
+keywords: select
+published: false
+---
+
+## splitAtom
+
+`splitAtom` 유틸리티는 리스트의 각 요소에 대응하는 atom이 필요한 상황을 위해 설계되었습니다. 리스트를 담고 있는 읽기/쓰기 atom에 대해 동작하며, 원본 리스트의 각 항목에 대응하는 atom 리스트를 담은 atom을 반환합니다.
+
+### 서명
+
+`splitAtom`의 단순화된 타입 서명은 다음과 같습니다.
+
+```ts
+type SplitAtom = <Item, Key>(
+  arrayAtom: PrimitiveAtom<Array<Item>>,
+  keyExtractor?: (item: Item) => Key
+): Atom<Array<PrimitiveAtom<Item>>>
+```
+
+### 주요 특징
+
+1. 반환된 atom에는 `write` 방향(v1.6.4부터)의 dispatch 함수가 포함되어 있어, `remove`, `insert`, `move` 같은 동작으로 원래 atom을 쉽게 수정할 수 있습니다.
+
+2. 안정성과 성능을 높이기 위해 선택적 `keyExtractor` 함수를 두 번째 인수로 넘길 수 있습니다.
+
+### 키 추출기
+
+`splitAtom` 유틸리티는 키 추출 함수인 두 번째 인수를 지원합니다.
+
+```ts
+export function splitAtom<Item, Key>(
+  arrAtom: WritableAtom<Item[], [Item[]], void> | Atom<Item[]>,
+  keyExtractor?: (item: Item) => Key,
+)
+```
+
+`keyExtractor`에 대한 중요 고려사항:
+
+- `splitAtom`이 React 렌더 루프 안에서 사용된다면, `keyExtractor`는 객체 동일성(얕은 동일성)을 유지하는 안정적인 함수여야 합니다. 이 요구 사항은 렌더 루프 밖에서는 적용되지 않습니다.
+- `keyExtractor`를 제공하면 atom 출력의 안정성이 높아집니다(메모이제이션 캐시 적중률이 높아집니다). 덕분에 원본 배열의 인덱스 이동 때문에 불필요하게 subatom이 다시 생성되는 일을 막을 수 있습니다.
+- `keyExtractor`는 추출된 키가 배열의 각 항목에 대해 고유함을 보장하는 경우에만 사용해야 하는 선택적 최적화입니다.
+
+### 사용 예
+
+다음은 `splitAtom` 사용법을 보여주는 예입니다.
+
+<Stackblitz id="vitejs-vite-oavdw2" file="src%2FApp.tsx" />
+
+```tsx
+import { Provider, atom, useAtom, PrimitiveAtom } from 'jotai'
+import { splitAtom } from 'jotai/utils'
+import './styles.css'
+
+const initialState = [
+  {
+    task: 'help the town',
+    done: false,
+  },
+  {
+    task: 'feed the dragon',
+    done: false,
+  },
+]
+
+const todosAtom = atom(initialState)
+const todoAtomsAtom = splitAtom(todosAtom)
+
+type TodoType = (typeof initialState)[number]
+
+const TodoItem = ({
+  todoAtom,
+  remove,
+}: {
+  todoAtom: PrimitiveAtom<TodoType>
+  remove: () => void
+}) => {
+  const [todo, setTodo] = useAtom(todoAtom)
+  return (
+    <div>
+      <input
+        value={todo.task}
+        onChange={(e) => {
+          setTodo((oldValue) => ({ ...oldValue, task: e.target.value }))
+        }}
+      />
+      <input
+        type="checkbox"
+        checked={todo.done}
+        onChange={() => {
+          setTodo((oldValue) => ({ ...oldValue, done: !oldValue.done }))
+        }}
+      />
+      <button onClick={remove}>remove</button>
+    </div>
+  )
+}
+
+const TodoList = () => {
+  const [todoAtoms, dispatch] = useAtom(todoAtomsAtom)
+  return (
+    <ul>
+      {todoAtoms.map((todoAtom) => (
+        <TodoItem
+          todoAtom={todoAtom}
+          remove={() => dispatch({ type: 'remove', atom: todoAtom })}
+        />
+      ))}
+    </ul>
+  )
+}
+
+const App = () => (
+  <Provider>
+    <TodoList />
+  </Provider>
+)
+
+export default App
+```
+
+이 예제는 `splitAtom`을 사용해 할 일 목록을 관리하는 방법을 보여 줍니다. 전체 리스트 atom은 유지한 채로, 각 항목을 개별적으로 조작할 수 있습니다.

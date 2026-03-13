@@ -1,0 +1,82 @@
+---
+title: 사용자 정의 useAtom 훅
+nav: 9.02
+keywords: custom,hook
+---
+
+이 페이지에서는 다양한 유틸리티 기능을 생성하는 방법을 보여줍니다. 유틸리티 기능을 사용하면 코딩 시간을 절약할 수 있으며 다른 용도로 사용할 수 있도록 기본 원자를 보존할 수 있습니다.
+
+### 유틸리티
+
+#### useSelectAtom
+
+```js
+import { useAtomValue } from 'jotai'
+import { selectAtom } from 'jotai/utils'
+
+export function useSelectAtom(anAtom, selector) {
+  const selectorAtom = selectAtom(
+    anAtom,
+    selector,
+    // 또는 `equalityFn`를 맞춤설정하여 언제 다시 렌더링할지 결정할 수 있습니다.
+    // 자세한 내용은 selectAtom의 서명을 확인하세요.
+  )
+  return useAtomValue(selectorAtom)
+}
+
+// 그것을 사용하는 방법
+function useN(n) {
+  const selector = useCallback((v) => v[n], [n])
+  return useSelectAtom(arrayAtom, selector)
+}
+```
+
+이 경우 `keyFn`는 안정적이어야 하며 외부 렌더링을 정의하거나 `useCallback`로 래핑해야 합니다.
+
+#### useFreezeAtom
+
+```js
+import { useAtom } from 'jotai'
+import { freezeAtom } from 'jotai/utils'
+
+export function useFreezeAtom(anAtom) {
+  return useAtom(freezeAtom(anAtom))
+}
+```
+
+#### useSplitAtom
+
+```js
+import { useAtom } from 'jotai'
+import { splitAtom } from 'jotai/utils'
+
+export function useSplitAtom(anAtom) {
+  return useAtom(splitAtom(anAtom))
+}
+```
+
+### 확장
+
+#### useFocusAtom
+
+```js
+import { useAtom } from 'jotai'
+import { focusAtom } from 'jotai-optics'
+
+/* 여기서 원자가 생성되면 대신 `useMemo(() => atom(initValue), [initValue])`를 사용하세요. */
+export function useFocusAtom(anAtom, keyFn) {
+    return useAtom(focusAtom(anAtom, keyFn))
+}
+
+// 그것을 사용하는 방법
+useFocusAtom(anAtom) {
+    useMemo(() => atom(initValue), [initValue]),
+    useCallback((optic) => optic.prop('key'), [])
+}
+```
+
+#### Stackblitz
+
+<Stackblitz id="vitejs-vite-ge1mah" file="src%2FApp.tsx" />
+
+이 경우 `keyFn`는 안정적이어야 하며 외부 렌더링을 정의하거나 `useCallback`로 래핑해야 합니다.

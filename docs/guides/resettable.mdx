@@ -1,0 +1,87 @@
+---
+title: 재설정 가능한 atom
+description: 재설정 가능한 atom을 사용하는 방법
+nav: 8.99
+published: false
+---
+
+Jotai 코어는 재설정 가능한 atom을 기본으로 지원하지 않습니다.
+하지만 `jotai/utils`의 헬퍼 함수를 사용하면 이를 만들 수 있습니다.
+
+### atomWithReset / useResetAtom을 사용한 primitive resettable atom
+
+```jsx
+import { useAtom } from 'jotai'
+import { atomWithReset, useResetAtom } from 'jotai/utils'
+
+const todoListAtom = atomWithReset([
+  { description: 'Add a todo', checked: false },
+])
+
+const TodoList = () => {
+  const [todoList, setTodoList] = useAtom(todoListAtom)
+  const resetTodoList = useResetAtom(todoListAtom)
+
+  return (
+    <>
+      <ul>
+        {todoList.map((todo) => (
+          <li>{todo.description}</li>
+        ))}
+      </ul>
+
+      <button
+        onClick={() =>
+          setTodoList((l) => [
+            ...l,
+            {
+              description: `New todo ${new Date().toDateString()}`,
+              checked: false,
+            },
+          ])
+        }
+      >
+        Add todo
+      </button>
+      <button onClick={resetTodoList}>Reset</button>
+    </>
+  )
+}
+```
+
+### 예제
+
+<Stackblitz id="vitejs-vite-2s1vg6" file="src%2FApp.tsx" />
+
+### RESET 심볼을 사용하는 파생 atom
+
+```jsx
+import { atom, useAtom, useSetAtom } from 'jotai'
+import { atomWithReset, useResetAtom, RESET } from 'jotai/utils'
+
+const dollarsAtom = atomWithReset(0)
+const centsAtom = atom(
+  (get) => get(dollarsAtom) * 100,
+  (get, set, newValue: number | typeof RESET) =>
+    set(dollarsAtom, newValue === RESET ? newValue : newValue / 100)
+)
+
+const ResetExample = () => {
+  const [dollars] = useAtom(dollarsAtom)
+  const setCents = useSetAtom(centsAtom)
+  const resetCents = useResetAtom(centsAtom)
+
+  return (
+    <>
+      <h3>Current balance ${dollars}</h3>
+      <button onClick={() => setCents(100)}>Set $1</button>
+      <button onClick={() => setCents(200)}>Set $2</button>
+      <button onClick={resetCents}>Reset</button>
+    </>
+  )
+}
+```
+
+### 예제
+
+<Stackblitz id="vitejs-vite-wjgquh" file="src%2FApp.tsx" />

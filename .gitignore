@@ -1,0 +1,7 @@
+.next
+out
+node_modules
+.tools
+.playwright-cli
+public/search-index.json
+tsconfig.tsbuildinfo

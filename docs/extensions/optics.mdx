@@ -1,0 +1,64 @@
+---
+title: Optics
+description: 이 문서에서는 Optics-ts 확장에 대해 설명합니다.
+nav: 4.09
+keywords: optics
+---
+
+### 설치
+
+이 기능을 사용하려면 `optics-ts` 및 `jotai-optics`를 설치해야 합니다.
+
+```
+npm install optics-ts jotai-optics
+```
+
+## focusAtom
+
+`focusAtom`은 전달한 focus를 바탕으로 새 atom을 생성합니다. 이렇게 하면 atom의 특정 부분에 초점을 맞춘 파생 atom이 만들어집니다.
+이 파생 atom이 업데이트되면 원래 atom에도 그에 대응하는 업데이트가 반영됩니다.
+
+다음 예를 보세요:
+
+```js
+const baseAtom = atom({ a: 5 }) // PrimitiveAtom<{a: number}>
+const derivedAtom = focusAtom(baseAtom, (optic) => optic.prop('a')) // PrimitiveAtom<number>
+```
+
+즉, getter와 setter를 모두 가진 `PrimitiveAtom<{a: number}>`에서 시작해서,
+`focusAtom`으로 `baseAtom`의 `a` 속성에 초점을 맞추고,
+결과로 `PrimitiveAtom<number>`를 얻은 것입니다.
+여기서 중요한 점은 이 `derivedAtom`이 getter일 뿐 아니라 setter이기도 하다는 것입니다.
+`derivedAtom`이 업데이트되면 `baseAtom`에도 그에 상응하는 업데이트가 일어납니다.
+
+아래 예시는 단순하지만 시작점으로는 충분합니다. `focusAtom`은 `Lens`, `Prism`, `Isomorphism`을 포함한 여러 종류의 optics를 지원합니다.
+
+더 고급 optics 예시는 https://github.com/akheron/optics-ts 에서 확인하세요.
+
+### 예
+
+```jsx
+import { atom } from 'jotai'
+import { focusAtom } from 'jotai-optics'
+
+const objectAtom = atom({ a: 5, b: 10 })
+const aAtom = focusAtom(objectAtom, (optic) => optic.prop('a'))
+const bAtom = focusAtom(objectAtom, (optic) => optic.prop('b'))
+
+const Controls = () => {
+  const [a, setA] = useAtom(aAtom)
+  const [b, setB] = useAtom(bAtom)
+  return (
+    <div>
+      <span>Value of a: {a}</span>
+      <span>Value of b: {b}</span>
+      <button onClick={() => setA((oldA) => oldA + 1)}>Increment a</button>
+      <button onClick={() => setB((oldB) => oldB + 1)}>Increment b</button>
+    </div>
+  )
+}
+```
+
+#### Stackblitz
+
+<Stackblitz id="vitejs-vite-jjunki" file="src%2FApp.tsx" />

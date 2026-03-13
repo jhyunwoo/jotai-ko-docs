@@ -1,0 +1,237 @@
+---
+title: Bunja
+description: 상태 수명 관리자
+nav: 5.03
+keywords: scope,di,raii,lifetime
+---
+
+[Bunja](https://github.com/disjukr/bunja)는 경량 상태 수명 관리자입니다.
+
+Jotai Atom에 대한 RAII 안전을 제공합니다.
+
+---
+
+참조:
+
+- [Bunja README](https://github.com/disjukr/bunja/blob/main/README.md)
+- [Presentations](https://github.com/disjukr/bunja/tree/main/presentations)
+
+## 설치
+
+```
+npm install bunja
+```
+
+### Bunja 정의
+
+`bunja` 함수를 사용하여 분자를 정의할 수 있습니다.
+
+`useBunja` 후크를 사용하여 정의된 Bunja에 액세스하면 Bunja 인스턴스가 생성됩니다.
+
+Bunja를 참조하는 렌더 트리의 모든 구성 요소가 사라지면 Bunja 인스턴스는 자동으로 삭제됩니다.
+
+Bunja의 수명이 시작되고 끝날 때 효과를 트리거하려면 `bunja.effect` 기능을 사용하면 됩니다.
+
+```ts
+import { bunja } from 'bunja'
+import { useBunja } from 'bunja/react'
+
+const countBunja = bunja(() => {
+  const countAtom = atom(0)
+
+  bunja.effect(() => {
+    console.log('mounted')
+    return () => console.log('unmounted')
+  })
+
+  return { countAtom }
+})
+
+function MyComponent() {
+  const { countAtom } = useBunja(countBunja)
+  const [count, setCount] = useAtom(countAtom)
+  // 여기에 구성 요소 논리가 있습니다.
+}
+```
+
+### 다른 Bunja에 의존하는 Bunja 정의
+
+수명이 넓은 상태와 수명이 더 좁은 다른 상태를 관리하려는 경우 (더 넓은) 분류에 의존하는 (더 좁은) 분류를 만들 수 있습니다.
+
+예를 들어 페이지 상태를 보유하는 Bunja와 모달 상태를 보유하는 또 다른 Bunja를 생각할 수 있습니다.
+
+페이지 상태는 모달 상태보다 오래 지속되며 모달 상태는 모달이 열리는 순간부터 닫힐 때까지 존재해야 합니다.
+
+그러한 경우에는 다음 코드를 작성할 수 있습니다.
+
+```tsx
+const pageBunja = bunja(() => {
+  const pageStateAtom = atom({})
+  return { pageStateAtom }
+})
+
+const childBunja = bunja(() => {
+  const { pageStateAtom } = bunja.use(pageBunja)
+  const childStateAtom = atom((get) => ({
+    ...get(pageStateAtom),
+    child: 'state',
+  }))
+  return { childStateAtom }
+})
+
+const modalBunja = bunja(() => {
+  const { pageStateAtom } = bunja.use(pageBunja)
+  const modalStateAtom = atom((get) => ({
+    ...get(pageStateAtom),
+    modal: 'state',
+  }))
+
+  bunja.effect(() => {
+    console.log('modal opened')
+    return () => console.log('modal closed')
+  })
+
+  return { modalStateAtom }
+})
+
+function Page() {
+  const [modalOpen, setModalOpen] = useState(false)
+  return (
+    <>
+      <Child />
+      {modalOpen && <Modal />}
+    </>
+  )
+}
+
+function Child() {
+  const { childStateAtom } = useBunja(childBunja)
+  const childState = useAtomValue(childStateAtom)
+  // ...
+}
+
+function Modal() {
+  const { modalStateAtom } = useBunja(modalBunja)
+  const modalState = useAtomValue(modalStateAtom)
+  // ...
+}
+```
+
+`pageBunja`는 직접 `useBunja`로 편집되지 않았습니다.
+
+`useBunja` `childBunja` 또는 `modalBunja`를 사용하면 `pageBunja`에 의존하므로 `pageBunja`도 `useBunja`로 처리된 것과 같은 효과가 있습니다.
+
+모달이 마운트 해제되면 더 이상 `useBunja(modalBunja)`를 사용하는 장소가 없으므로 `modalBunja` 인스턴스가 자동으로 삭제됩니다.
+
+### 범위를 사용한 종속성 주입
+
+로컬 상태 관리를 위해 분자를 사용할 수 있습니다.
+
+범위를 Bunja의 종속성으로 지정하면 범위에 주입된 값을 기반으로 별도의 Bunja 인스턴스가 생성됩니다.
+
+```ts
+import { bunja, createScope } from 'bunja'
+
+const UrlScope = createScope()
+
+const fetchBunja = bunja(() => {
+  const url = bunja.use(UrlScope)
+
+  const queryAtom = atomWithQuery((get) => ({
+    queryKey: [url],
+    queryFn: async () => (await fetch(url)).json(),
+  }))
+
+  return { queryAtom }
+})
+```
+
+#### React 컨텍스트를 통해 종속성 주입
+
+범위를 React 컨텍스트에 바인딩하면 범위에 의존하는 Bunja가 해당 React 컨텍스트에서 값을 검색할 수 있습니다.
+
+아래 예에는 동일한 `fetchBunja`을 참조하는 두 개의 React 인스턴스(`<ChildComponent />`)가 있지만 각각 다른 컨텍스트 값을 보기 때문에 두 개의 별도 Bunja 인스턴스도 생성됩니다.
+
+```tsx
+import { createContext } from 'react'
+import { bunja, createScope } from 'bunja'
+import { bindScope } from 'bunja/react'
+
+const UrlContext = createContext('https://example.com/')
+const UrlScope = createScope()
+bindScope(UrlScope, UrlContext)
+
+const fetchBunja = bunja(() => {
+  const url = bunja.use(UrlScope)
+
+  const queryAtom = atomWithQuery((get) => ({
+    queryKey: [url],
+    queryFn: async () => (await fetch(url)).json(),
+  }))
+
+  return { queryAtom }
+})
+
+function ParentComponent() {
+  return (
+    <>
+      <UrlContext value="https://example.com/foo">
+        <ChildComponent />
+      </UrlContext>
+      <UrlContext value="https://example.com/bar">
+        <ChildComponent />
+      </UrlContext>
+    </>
+  )
+}
+
+function ChildComponent() {
+  const { queryAtom } = useBunja(fetchBunja)
+  const { data, isPending, isError } = useAtomValue(queryAtom)
+  // 여기에 구성 요소 논리가 있습니다.
+}
+```
+
+`createScopeFromContext` 함수를 사용하면 범위 생성과 컨텍스트 바인딩을 모두 한 단계로 처리할 수 있습니다.
+
+```ts
+import { createContext } from 'react'
+import { createScopeFromContext } from 'bunja/react'
+
+const UrlContext = createContext('https://example.com/')
+const UrlScope = createScopeFromContext(UrlContext)
+```
+
+#### 범위에 직접 종속성 주입
+
+범위에 주입될 값이 생성되는 React 구성 요소 내에서 직접 Bunja를 사용하고 싶을 수도 있습니다.
+
+이러한 경우 `useBunja` 후크의 두 번째 매개변수를 사용하면 컨텍스트를 별도로 래핑하지 않고도 범위에 값을 주입할 수 있습니다.
+
+```tsx
+function MyComponent() {
+  const { queryAtom } = useBunja(fetchBunja, [
+    UrlScope.bind('https://example.com/'),
+  ])
+  const { data, isPending, isError } = useAtomValue(queryAtom)
+  // 여기에 구성 요소 논리가 있습니다.
+}
+```
+
+##### Bunja 내부에서 동일한 작업을 수행합니다.
+
+`bunja.fork`를 사용하여 Bunja 초기화 함수 내에서 범위 값을 주입할 수 있습니다.
+
+```ts
+const myBunja = bunja(() => {
+  const fooData = bunja.fork(fetchBunja, [
+    UrlScope.bind('https://example.com/foo'),
+  ])
+  const barData = bunja.fork(fetchBunja, [
+    UrlScope.bind('https://example.com/bar'),
+  ])
+
+  return { fooData, barData }
+})
+```
+

@@ -1,0 +1,78 @@
+---
+title: Provider
+description: 이 문서에서는 핵심 `jotai` 번들에 대해 설명합니다.
+nav: 2.04
+keywords: provider,usestore,ssr
+---
+
+## Provider
+
+`Provider` 컴포넌트는 컴포넌트 하위 트리에 상태를 제공합니다.
+여러 하위 트리에 여러 `Provider`를 사용할 수 있으며,
+React Context와 비슷하게 동작합니다.
+
+트리에서 `Provider` 없이 atom을 사용하면
+기본 스토어를 사용하게 됩니다. 이를 보통 Provider-less 모드라고 부릅니다.
+
+공급자는 다음 세 가지 이유로 유용합니다.
+
+1. 각 하위 트리에 서로 다른 상태를 제공합니다.
+2. atom의 초기값을 분리할 수 있습니다.
+3. 다시 마운트하여 모든 atom을 비웁니다.
+
+```jsx
+const SubTree = () => (
+  <Provider>
+    <Child />
+  </Provider>
+)
+```
+
+### 서명
+
+```ts
+const Provider: React.FC<{
+  store?: Store
+}>
+```
+
+Atom config 자체는 값을 보유하지 않습니다. atom 값은 별도의 스토어에 존재합니다.
+`Provider`는 컴포넌트 트리 아래에서 이 atom 값들을 제공하는 컴포넌트입니다.
+`Provider`를 사용하지 않으면 기본 스토어가 사용되며, 이때는 Provider-less 모드로 동작합니다.
+서로 다른 컴포넌트 트리에서 서로 다른 atom 값을 사용해야 한다면 `Provider`가 필요합니다.
+또한 `Provider`는 선택적 `store` prop을 받을 수 있습니다.
+
+```jsx
+const Root = () => (
+  <Provider>
+    <App />
+  </Provider>
+)
+```
+
+### `store` prop
+
+`Provider`는 하위 트리에서 사용할 `store` prop을 받을 수 있습니다.
+
+#### 예
+
+```jsx
+const myStore = createStore()
+
+const Root = () => (
+  <Provider store={myStore}>
+    <App />
+  </Provider>
+)
+```
+
+## useStore
+
+이 훅은 컴포넌트 트리 안에서 사용 중인 스토어를 반환합니다.
+
+```jsx
+const Component = () => {
+  const store = useStore()
+  // ...
+}
+```

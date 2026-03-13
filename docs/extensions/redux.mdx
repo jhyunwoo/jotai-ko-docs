@@ -1,0 +1,57 @@
+---
+title: Redux
+description: 이 문서에서는 Redux 확장 프로그램에 대해 설명합니다.
+nav: 4.98
+keywords: redux
+published: false
+---
+
+Jotai의 상태는 React 안에 존재하지만,
+때로는 React 바깥의 세계와 상호작용하는 것이 좋을 때도 있습니다.
+
+Redux는 어떤 값을 저장하고
+Jotai의 atom과 동기화하는 데 사용할 수 있는 store 인터페이스를 제공합니다.
+
+### 설치
+
+이 기능을 사용하려면 `redux` 및 `jotai-redux`를 설치해야 합니다.
+
+```
+npm install redux jotai-redux
+```
+
+## atomWithStore
+
+`atomWithStore`는 redux store를 사용하는 새 atom을 생성합니다.
+이는 양방향 바인딩이므로 양쪽에서 모두 값을 바꿀 수 있습니다.
+
+```jsx
+import { useAtom } from 'jotai'
+import { atomWithStore } from 'jotai-redux'
+import { createStore } from 'redux'
+
+const initialState = { count: 0 }
+const reducer = (state = initialState, action: { type: 'INC' }) => {
+  if (action.type === 'INC') {
+    return { ...state, count: state.count + 1 }
+  }
+  return state
+}
+const store = createStore(reducer)
+const storeAtom = atomWithStore(store)
+
+const Counter = () => {
+  const [state, dispatch] = useAtom(storeAtom)
+
+  return (
+    <>
+      count: {state.count}
+      <button onClick={() => dispatch({ type: 'INC' })}>button</button>
+    </>
+  )
+}
+```
+
+### 예제
+
+<Stackblitz id="vitejs-vite-qqsnwc" file="src%2FApp.tsx" />
